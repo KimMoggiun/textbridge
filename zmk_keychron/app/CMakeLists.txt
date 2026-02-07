@@ -103,5 +103,6 @@ zephyr_library_include_directories(src/24G)
 add_subdirectory_ifdef(CONFIG_ZMK_LAUNCHER src/launcher)
 add_subdirectory(src/dfu/)
 
+target_sources(app PRIVATE src/textbridge.c)
 
 zephyr_cc_option(-Wfatal-errors)
