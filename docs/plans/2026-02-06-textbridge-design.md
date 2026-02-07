@@ -35,11 +35,12 @@ nRF52840은 라디오가 1개이며, BLE와 2.4GHz ESB가 같은 라디오를 �
 | PC 연결 | 라디오 상태 | 폰 BLE 연결 | TextBridge |
 |---|---|---|---|
 | **USB (유선)** | **미사용** | **가능** | **지원** |
-| BLE | BLE 사용 중 | 가능 (다중 프로필) | 지원 가능 |
+| BLE | BLE 사용 중 | - | **미지원** |
 | 2.4GHz 동글 | ESB 독점 | **불가** | **미지원** |
 
-> **설계 결정:** PC는 USB 유선 연결, 폰은 BLE 연결으로 확정.
-> 2.4GHz 모드에서는 TextBridge 미지원 (하드웨어 제약).
+> **설계 결정:** TextBridge는 USB 모드 전용.
+> BLE 모드: ZMK BLE 프로필 관리와 충돌 → 미지원.
+> 2.4GHz 모드: ESB가 라디오 독점 → 미지원.
 
 ---
 
@@ -76,9 +77,8 @@ textbridge/
 ├── zmk_keychron/                   ← Keychron ZMK 펌웨어 전체 소스
 │   ├── app/
 │   │   ├── src/
-│   │   │   ├── ble.c              ← BLE 연결 관리 (수정: 1줄)
-│   │   │   ├── behaviors/
-│   │   │   │   └── behavior_bt.c  ← BT 비헤이비어 (수정: 수 줄)
+│   │   │   ├── ble.c              ← BLE 연결 관리 (수정: 수 줄)
+│   │   │   ├── behaviors/         ← 변경 없음
 │   │   │   ├── textbridge.c       ← [신규] TextBridge 모듈
 │   │   │   ├── hid.c, endpoints.c, hog.c  ← 변경 없음
 │   │   │   └── 24G/               ← 2.4GHz ESB (변경 없음)
@@ -103,7 +103,9 @@ TextBridge 전체 기능을 담당하는 단일 모듈:
 - 키코드 수신 → HID 순차 주입
 - ACK/상태 Notify
 
-### 4.2 수정: ble.c (1줄)
+### 4.2 수정: ble.c (수 줄)
+
+**변경 1: `bt_enable()` 중복 호출 허용 (line 1209)**
 
 ```c
 // 기존:
@@ -121,20 +123,32 @@ TextBridge가 먼저 `bt_enable()`을 호출해도 이후 BLE 모드 전환 시 
 > TextBridge는 자체적으로 `bt_enable()`을 호출하여 BLE 스택을 초기화한다.
 > Phase 1 PoC에서 USB 모드 부팅 시 `bt_enable()` 호출 여부를 확인할 것.
 
-### 4.3 수정: behavior_bt.c (수 줄)
+**변경 2: USB 모드 TextBridge 페어링 훅 (`zmk_ble_prof_pair_start()`, line 675 이전)**
 
 ```c
-// BT_PAIR_CMD 분기에 추가:
-case BT_PAIR_CMD:
-    if (get_current_transport() == ZMK_TRANSPORT_USB) {
-        return zmk_textbridge_pair_start();
-    }
-    return zmk_ble_prof_pair_start(binding->param2);
+// 기존 코드 (ble.c:669-678):
+if(get_current_transport()==ZMK_TRANSPORT_24G) {
+    if(index == 3) zmk_24g_pair();
+    return 0;
+}
+// ===== TextBridge 훅 삽입 =====
+if(get_current_transport()==ZMK_TRANSPORT_USB) {
+    return zmk_textbridge_pair_start();
+}
+// ==============================
+if(get_current_transport()!=ZMK_TRANSPORT_BLE || (index>=3)) {
+    return -ENOTSUP;
+}
 ```
 
-USB 모드에서 Fn+1 → TextBridge 페어링. BLE 모드에서 Fn+1 → 기존 BT 페어링.
+기존 transport 디스패치 패턴(24G → `zmk_24g_pair()`)과 동일한 방식.
+USB 모드에서 Fn+1 → TextBridge 페어링. BLE/2.4G → 기존 동작 그대로.
 
-### 4.4 수정: CMakeLists.txt (1줄)
+> **behavior_bt.c는 변경하지 않는다.**
+> behavior_bt.c는 transport 인식 없는 순수 디스패처이며,
+> `zmk_ble_prof_pair_start()`에 이미 transport별 분기가 존재한다.
+
+### 4.3 수정: CMakeLists.txt (1줄)
 
 ```cmake
 target_sources(app PRIVATE src/textbridge.c)
@@ -226,7 +240,31 @@ USB 모드에서는 ZMK이 BLE 광고를 하지 않으므로 TextBridge만 광�
 
 - TextBridge 광고 데이터에 커스텀 UUID만 포함 (HID UUID 미포함)
 - 폰이 키보드로 인식하지 않음 (HID 서비스 미노출)
-- BLE 모드 전환 시 TextBridge 광고 중지 → ZMK BLE 정상 동작
+
+### 본딩 전용 광고 (Filter Accept List)
+
+ZMK에 이미 `CONFIG_BT_FILTER_ACCEPT_LIST=y`가 활성화되어 있고,
+`setup_accept_list()` + `BT_LE_ADV_OPT_FILTER_SCAN_REQ | FILTER_CONN` 패턴이 구현되어 있다.
+TextBridge도 동일한 Zephyr API를 사용:
+
+```c
+// 본딩 기기 전용 광고 파라미터
+adv_param.options |= BT_LE_ADV_OPT_FILTER_SCAN_REQ;
+adv_param.options |= BT_LE_ADV_OPT_FILTER_CONN;
+```
+
+### USB 모드 벗어날 때 동작
+
+TextBridge는 USB 모드 전용. USB 모드를 벗어나면 즉시 중지:
+
+- ZMK `zmk_endpoint_changed` 이벤트 구독 (ZMK_LISTENER)
+- USB → BLE/2.4G 전환 감지 시:
+  1. 진행 중인 전송 즉시 중단
+  2. HID 리포트 클리어 (`zmk_hid_keyboard_clear()` + `send_report()`)
+  3. BLE 연결 끊기 (`bt_conn_disconnect()`)
+  4. BLE 광고 중지 (`bt_le_adv_stop()`)
+  5. 대기 상태로 복귀
+- USB 모드로 돌아오면 자동으로 BLE 광고 재시작 (본딩된 폰 전용)
 
 ---
 
@@ -459,11 +497,10 @@ ASCII:  'A' → (0x04, 0x02)              // KEY_A + Shift
 
 ### Phase 2: BLE GATT 서비스
 
-- `ble.c` 1줄 수정 (`-EALREADY` 허용)
-- `behavior_bt.c` 수정 (USB 모드 Fn+1 → TextBridge 페어링)
-- 커스텀 GATT 서비스 등록 + BLE 광고
+- `ble.c` 수정 (`-EALREADY` 허용 + TextBridge 페어링 훅)
+- 커스텀 GATT 서비스 등록 + BLE 광고 (본딩 전용)
 - 폰에서 BLE 연결 테스트 (nRF Connect 앱으로 검증)
-- **변경:** ble.c(1줄), behavior_bt.c(수 줄), textbridge.c(확장)
+- **변경:** ble.c(수 줄), textbridge.c(확장)
 
 ### Phase 3: 키코드 수신 → HID 출력
 
@@ -497,14 +534,13 @@ ASCII:  'A' → (0x04, 0x02)              // KEY_A + Shift
 |---|---|
 | `app/src/textbridge.c` | TextBridge 전체 (BLE GATT + HID 주입 + 광고 + 페어링) |
 
-### 수정 파일 (3개, 최소 변경)
+### 수정 파일 (2개, 최소 변경)
 
 | 파일 | 변경량 | 내용 |
 |---|---|---|
 | `app/CMakeLists.txt` | 1줄 추가 | `target_sources(app PRIVATE src/textbridge.c)` |
-| `app/src/ble.c` | 1줄 수정 | `bt_enable()` 리턴값 `-EALREADY` 허용 |
-| `app/src/behaviors/behavior_bt.c` | 수 줄 추가 | USB 모드 Fn+1 → TextBridge 페어링 분기 |
+| `app/src/ble.c` | 수 줄 | `bt_enable()` `-EALREADY` 허용 + `zmk_ble_prof_pair_start()`에 USB 모드 TextBridge 훅 |
 
 ### 변경하지 않는 파일
 
-hid.c, endpoints.c, hog.c, keymap, DTS, defconfig, 24G — 전부 그대로.
+behavior_bt.c, hid.c, endpoints.c, hog.c, keymap, DTS, defconfig, 24G — 전부 그대로.
