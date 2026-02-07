@@ -1,0 +1,13 @@
+# ZMK build dependencies (managed by west, not tracked)
+zmk_keychron/modules/
+zmk_keychron/zephyr/
+zmk_keychron/.west/
+
+# Build output
+zmk_keychron/app/build/
+
+# IDE / cache
+zmk_keychron/app/.cache/
+
+# OS
+.DS_Store

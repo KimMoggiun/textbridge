@@ -67,31 +67,27 @@ nRF52840은 라디오가 1개이며, BLE와 2.4GHz ESB가 같은 라디오를 �
 
 ## 3. 프로젝트 구조
 
-### 키크론 ZMK 소스 (빌드용)
 ```
-~/zmk_keychron/
-├── app/
-│   ├── src/
-│   │   ├── ble.c                  ← BLE 연결 관리 (수정: 1줄)
-│   │   ├── hog.c                  ← HID over GATT (변경 없음)
-│   │   ├── hid.c                  ← HID 리포트 생성 (변경 없음)
-│   │   ├── endpoints.c            ← USB/BLE/2.4G 전송 라우팅 (변경 없음)
-│   │   ├── behaviors/
-│   │   │   └── behavior_bt.c      ← BT 비헤이비어 (수정: 수 줄)
-│   │   ├── textbridge.c           ← [신규] TextBridge 모듈
-│   │   └── 24G/                   ← 2.4GHz ESB (변경 없음)
-│   ├── boards/arm/keychron/       ← 보드 정의 (변경 없음)
-│   ├── boards/shields/keychron/   ← 키맵 (변경 없음)
-│   └── CMakeLists.txt             ← 빌드 설정 (수정: 1줄)
-└── zephyr/                        ← Zephyr RTOS (변경 없음)
-```
-
-### TextBridge 저장소 (이 저장소)
-```
-/Users/evan/textbridge/
-├── README.md
-└── docs/plans/
-    └── 2026-02-06-textbridge-design.md
+textbridge/
+├── docs/plans/
+│   └── 2026-02-06-textbridge-design.md
+├── tools/
+│   └── enter_dfu.py               ← PC에서 DFU 모드 진입
+├── zmk_keychron/                   ← Keychron ZMK 펌웨어 전체 소스
+│   ├── app/
+│   │   ├── src/
+│   │   │   ├── ble.c              ← BLE 연결 관리 (수정: 1줄)
+│   │   │   ├── behaviors/
+│   │   │   │   └── behavior_bt.c  ← BT 비헤이비어 (수정: 수 줄)
+│   │   │   ├── textbridge.c       ← [신규] TextBridge 모듈
+│   │   │   ├── hid.c, endpoints.c, hog.c  ← 변경 없음
+│   │   │   └── 24G/               ← 2.4GHz ESB (변경 없음)
+│   │   ├── boards/                ← 보드 정의, 키맵 (변경 없음)
+│   │   └── CMakeLists.txt         ← 빌드 설정 (수정: 1줄)
+│   ├── zephyr/                    ← .gitignore (빌드 의존성)
+│   └── modules/                   ← .gitignore (빌드 의존성)
+├── .gitignore
+└── README.md
 ```
 
 ---
@@ -120,6 +116,10 @@ if (err && err != -EALREADY) {
 ```
 
 TextBridge가 먼저 `bt_enable()`을 호출해도 이후 BLE 모드 전환 시 정상 동작.
+
+> **부팅 순서 주의:** USB 모드에서 ZMK은 `bt_enable()`을 호출하지 않을 수 있다.
+> TextBridge는 자체적으로 `bt_enable()`을 호출하여 BLE 스택을 초기화한다.
+> Phase 1 PoC에서 USB 모드 부팅 시 `bt_enable()` 호출 여부를 확인할 것.
 
 ### 4.3 수정: behavior_bt.c (수 줄)
 
@@ -219,6 +219,15 @@ static const struct bt_data sd[] = {
 };
 ```
 
+### HID 서비스 격리
+
+TextBridge BLE 광고는 ZMK의 기존 BLE HID 서비스(HOG)와 독립적으로 동작해야 한다.
+USB 모드에서는 ZMK이 BLE 광고를 하지 않으므로 TextBridge만 광고하면 충돌 없음.
+
+- TextBridge 광고 데이터에 커스텀 UUID만 포함 (HID UUID 미포함)
+- 폰이 키보드로 인식하지 않음 (HID 서비스 미노출)
+- BLE 모드 전환 시 TextBridge 광고 중지 → ZMK BLE 정상 동작
+
 ---
 
 ## 7. 통신 프로토콜
@@ -254,6 +263,20 @@ BLE MTU 기본 23bytes → 헤더 3bytes → 페이로드 20bytes → 키코드 
 MTU 협상 후 최대 244bytes → 키코드 ~120개/청크
 ```
 
+### 앱-펌웨어 역할 분리
+
+앱은 **(keycode, modifier) 쌍**을 전송하고, 펌웨어가 **HID press/release 시퀀스**를 실행한다.
+
+| 역할 | 앱 (Flutter) | 펌웨어 (textbridge.c) |
+|---|---|---|
+| 문자 분해 | "왂" → ㅇ, ㅗ, ㅏ, ㄲ | - |
+| 키코드 변환 | ㄲ → (R, Shift) | - |
+| 청크 패킹 | (D,0x00), (H,0x00), (K,0x00), (R,0x02) | - |
+| HID 시퀀스 | - | modifier 있으면 register_mod → press → send → delay → release → unregister_mod → send |
+| HID 전송 | - | `zmk_endpoints_send_report()` via USB |
+
+펌웨어는 언어를 모른다. `(keycode, modifier)` 쌍을 받아 press/release로 확장할 뿐이다.
+
 ### RX 데이터 포맷 (키보드 → 폰)
 
 ```
@@ -280,6 +303,24 @@ MTU 협상 후 최대 244bytes → 키코드 ~120개/청크
 ```
 
 키보드가 ACK을 보내야 폰이 다음 청크 전송 → 버퍼 오버플로우 방지.
+
+### 시퀀스 번호
+
+시퀀스 번호는 1바이트(0-255)이며 256에서 0으로 순환한다.
+ACK 기반 흐름 제어이므로 한 번에 미확인 청크는 최대 1개 → 순환해도 모호성 없음.
+
+### 전송 Timeout
+
+키보드가 전송 모드에서 빠져나오지 못하는 상황 방지:
+
+| 상황 | Timeout | 동작 |
+|---|---|---|
+| 전송 중 폰 무응답 | 30초 | 전송 중단, 대기 상태 복귀 |
+| BLE 연결 끊김 | 즉시 | 전송 중단, 대기 상태 복귀 |
+
+- BLE 연결 끊김: Zephyr `BT_CONN_DISCONNECTED` 콜백에서 즉시 상태 초기화
+- 폰 무응답: `k_work_delayable`로 30초 타이머, 청크 ACK 수신 시 리셋
+- 상태 복귀 시 HID 리포트 클리어 (`zmk_hid_keyboard_clear()` + `send_report()`)
 
 ---
 
@@ -314,45 +355,31 @@ TextBridge 전송 중 사용자가 키보드를 직접 누르면 **무시 (차�
 
 ## 9. 문자 → 키코드 변환 (Flutter 앱)
 
-### ASCII 변환
+모든 문자 → 키코드 변환은 앱에서 처리한다. 펌웨어에는 `(keycode, modifier)` 쌍만 전달.
+
+### 변환 예시
 
 ```
-'a' → (0x04, 0x00)        // KEY_A, no modifier
-'A' → (0x04, 0x02)        // KEY_A + Left Shift
-'1' → (0x1E, 0x00)        // KEY_1
-'!' → (0x1E, 0x02)        // KEY_1 + Left Shift
-'{' → (0x2F, 0x02)        // KEY_[ + Left Shift
-'\n' → (0x28, 0x00)       // KEY_ENTER
-'\t' → (0x2B, 0x00)       // KEY_TAB
-' '  → (0x2C, 0x00)       // KEY_SPACE
+ASCII:  'A' → (0x04, 0x02)              // KEY_A + Shift
+        '{' → (0x2F, 0x02)              // KEY_[ + Shift
+        '\n' → (0x28, 0x00)             // KEY_ENTER
+
+한글:   "왂" → 한영키, D, H, K, Shift+R, 한영키
+        분해: ㅇ(초성) → (D, 0x00)
+              ㅘ(중성, 복합) → (H, 0x00), (K, 0x00)
+              ㄲ(종성, 쌍자음) → (R, 0x02)
 ```
 
-### 한글 변환 (자모 분해)
+### 한글 처리 개요
 
-```
-"간" (U+AC04)
-  → 초성: ㄱ (index 0)
-  → 중성: ㅏ (index 0)
-  → 종성: ㄴ (index 2)
+1. 유니코드 음절 분해: `code = char - 0xAC00` → 초성/중성/종성 인덱스
+2. 각 자모 → 두벌식 키코드 변환 (룩업 테이블)
+3. 쌍자음(ㄲ,ㄸ,ㅃ,ㅆ,ㅉ) → modifier에 Shift 추가
+4. 복합 모음(ㅘ,ㅙ 등) → 2개 키코드로 확장
+5. 겹받침(ㄳ,ㄺ 등) → 2개 키코드로 확장
+6. 한글 구간 전후에 한/영 전환키 삽입
 
-전송 순서: 한/영키 → ㄱ → ㅏ → ㄴ → 한/영키
-```
-
-### 한글 유니코드 분해 공식
-
-```
-code = char - 0xAC00
-초성 = code / 588
-중성 = (code % 588) / 28
-종성 = code % 28
-```
-
-### 자모 → 키코드 매핑 (두벌식)
-
-```
-초성: ㄱ→R, ㄴ→S, ㄷ→E, ㄹ→F, ㅁ→A, ㅂ→Q, ㅅ→T, ㅇ→D, ㅈ→W, ㅊ→C, ㅋ→Z, ㅌ→X, ㅍ→V, ㅎ→G
-중성: ㅏ→K, ㅓ→J, ㅗ→H, ㅜ→N, ㅡ→M, ㅣ→L, ㅐ→O, ㅔ→P...
-```
+상세 변환 테이블은 앱 구현 시 정의.
 
 ### OS별 한영전환 키
 
