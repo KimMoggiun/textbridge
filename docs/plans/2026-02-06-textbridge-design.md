@@ -526,7 +526,108 @@ ASCII:  'A' → (0x04, 0x02)              // KEY_A + Shift
 
 ---
 
-## 13. ZMK 펌웨어 변경 총정리
+## 13. 빌드 & 플래시
+
+### 빌드 환경
+
+```bash
+source ~/.zmk_env/bin/activate
+export ZEPHYR_SDK_INSTALL_DIR=~/.zephyr-sdk-0.16.3
+```
+
+### 빌드
+
+```bash
+cd ~/project/textbridge/zmk_keychron/app
+west build --pristine -b keychron -- -DSHIELD=keychron_b6_us
+```
+
+### 플래시
+
+```bash
+# DFU 모드 진입 (방법 1: Python 스크립트)
+python3 ~/project/textbridge/tools/enter_dfu.py
+
+# DFU 모드 진입 (방법 2: 키보드에서 ESC+U 동시 누르기)
+
+# 2초 대기 후 플래시
+sleep 2 && cp build/zephyr/zmk.uf2 /Volumes/NRF52BOOT/
+```
+
+### 빌드 + 플래시 한번에
+
+```bash
+source ~/.zmk_env/bin/activate && \
+export ZEPHYR_SDK_INSTALL_DIR=~/.zephyr-sdk-0.16.3 && \
+cd ~/project/textbridge/zmk_keychron/app && \
+west build -b keychron -- -DSHIELD=keychron_b6_us && \
+python3 ~/project/textbridge/tools/enter_dfu.py && \
+sleep 2 && cp build/zephyr/zmk.uf2 /Volumes/NRF52BOOT/
+```
+
+### Zephyr 패치 (최초 1회)
+
+```bash
+cd ~/project/textbridge/zmk_keychron/zephyr
+git apply ../0001-esb-nrf-fix.patch
+```
+
+---
+
+## 14. 테스트 도구
+
+### 통합 테스트 스크립트: `tools/textbridge_test.py`
+
+Mac이 USB (HID 수신)와 BLE (TextBridge GATT) 양쪽에 동시 접근 가능하므로 하나의 도구로 통합.
+
+```
+┌──────────────────────┐
+│  textbridge_test.py  │
+│                      │
+│  BLE ──→ 키보드      │  bleak: GATT Write/Notify
+│  USB ←── 키보드      │  pynput: 키 이벤트 캡처
+│                      │
+│  보낸 것 vs 받은 것   │  비교 검증
+└──────────────────────┘
+```
+
+### 모드
+
+| 명령 | 기능 | 대상 Phase |
+|---|---|---|
+| `scan` | TextBridge BLE 장치 검색 (GATT UUID 스캔) | 2 |
+| `monitor` | USB HID 키 이벤트 캡처 + 로그 | 1 |
+| `connect` | BLE 연결 + GATT 서비스 탐색 + Write 테스트 | 2 |
+| `send "text"` | 키코드 청크 전송 + ACK 수신 + HID 검증 | 3 |
+
+### Phase별 테스트 방법
+
+**Phase 1 (HID PoC):**
+- 펌웨어 플래시 후 `monitor` 모드 실행
+- 키보드가 3초마다 자동 출력하는 'a'를 캡처 확인
+
+**Phase 2 (BLE GATT):**
+- `scan`으로 "B6 TextBridge" 장치 발견 확인
+- `connect`로 GATT 서비스/특성 목록 출력, Write 테스트
+
+**Phase 3 (전체 파이프라인):**
+- `send "hello"`로 키코드 전송
+- BLE 측: ACK 수신 확인
+- USB 측: "hello" 키스트로크 수신 확인
+- 보낸 것과 받은 것 자동 비교
+
+### 의존성
+
+```
+bleak     # BLE GATT 클라이언트
+pynput    # macOS 키 이벤트 캡처 (접근성 권한 필요)
+asyncio   # 비동기 처리
+```
+
+---
+
+## 15. ZMK 펌웨어 변경 총정리
+
 
 ### 신규 파일 (1개)
 
