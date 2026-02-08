@@ -281,6 +281,25 @@ if (!tb_conn && conn) {
 
 **검증**: 수정 후 프로토콜 테스트 10/10 통과.
 
+### HF-002: macOS 한글 HID 주입 수정 (2026-02-08)
+
+**파일**: `zmk_keychron/app/src/textbridge.c`, `tools/test_phase3_protocol.py`
+
+**증상**: macOS에서 한영 혼합 텍스트("Hello 안녕 World 세계") 전송 시 "Hello dㅏㄴ녕 World 섹P" 출력. 두 가지 문제:
+1. macOS가 단독 Shift HID 리포트를 CJK→English 전환으로 해석
+2. Ctrl+Space를 별도 리포트로 전송 시 입력기 전환 불안정
+
+**수정**:
+1. **Atomic modifier+key**: modifier와 key를 같은 HID 리포트에 포함 (register_mods + keyboard_press + send_report)
+2. **Toggle delay 100ms**: Ctrl+Space 이후 macOS 입력기 전환 대기 (`TB_TOGGLE_DELAY_MS`)
+3. **Ctrl+Space 감지**: `kc == 0x2C && mod == 0x01` 조건 추가
+
+**Python 테스트 도구 수정**:
+- `--os mac` 옵션 추가, `TOGGLE_MAC = (0x2C, 0x01)` (Ctrl+Space)
+- `text_to_keycodes()` 한글 지원 (`hangul_to_keycodes()` 위임)
+
+**검증**: "자모 닭 까닭없이 값", "Hello 안녕 World 세계" 모두 macOS 터미널에서 정확히 출력.
+
 ---
 
 ## Verification Results (2026-02-08)
@@ -308,6 +327,20 @@ if (!tb_conn && conn) {
 - `keycode_service_test.dart`: ASCII/한글 키코드 변환, 혼합 텍스트, emoji 처리
 - `hangul_service_test.dart`: 한글 음절 분해, 두벌식 매핑, 쌍자음/복합모음/겹받침
 - `settings_service_test.dart`: 설정 영속화 (TargetOS, TypingSpeed)
+
+### 실제 HID 출력 검증 — macOS (2026-02-08)
+
+| 텍스트 | 결과 | 비고 |
+|--------|------|------|
+| `자모 닭 까닭없이 값` | PASS | 쌍자음, 겹받침 정확 |
+| `Hello 안녕 World 세계` | PASS | 한영 전환 4회, Ctrl+Space |
+
+### 스트레스 테스트 (2026-02-08)
+
+| 테스트 | 결과 | 비고 |
+|--------|------|------|
+| 5000자 단일 전송 | PASS | 67 chars/sec |
+| 5000자 연속 3회 | 2/3 PASS | 3회차 chunk 195/625에서 ACK timeout |
 
 ---
 
