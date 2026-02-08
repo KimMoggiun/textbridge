@@ -9,5 +9,15 @@ zmk_keychron/app/build/
 # IDE / cache
 zmk_keychron/app/.cache/
 
+# Flutter
+flutter_app/textbridge_app/.dart_tool/
+flutter_app/textbridge_app/build/
+flutter_app/textbridge_app/.flutter-plugins
+flutter_app/textbridge_app/.flutter-plugins-dependencies
+
+# Python
+__pycache__/
+*.pyc
+
 # OS
 .DS_Store

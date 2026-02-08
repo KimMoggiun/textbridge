@@ -1,0 +1,220 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import '../models/connection_state.dart';
+import '../models/protocol.dart';
+import '../services/ble_service.dart';
+import '../services/keycode_service.dart';
+import '../services/settings_service.dart';
+
+/// Transmission progress callback data.
+class TransmissionProgress {
+  final int sentChunks;
+  final int totalChunks;
+  final int sentKeycodes;
+  final int totalKeycodes;
+
+  const TransmissionProgress({
+    required this.sentChunks,
+    required this.totalChunks,
+    required this.sentKeycodes,
+    required this.totalKeycodes,
+  });
+
+  double get fraction => totalChunks > 0 ? sentChunks / totalChunks : 0;
+}
+
+/// High-level text transmission with flow control.
+/// Handles START/KEYCODE/DONE sequence, ACK waiting, and retransmission.
+class TransmissionService extends ChangeNotifier {
+  final BleService _ble;
+  SettingsService? _settings;
+  StreamSubscription? _responseSub;
+
+  TransmissionProgress _progress = const TransmissionProgress(
+    sentChunks: 0,
+    totalChunks: 0,
+    sentKeycodes: 0,
+    totalKeycodes: 0,
+  );
+  TransmissionProgress get progress => _progress;
+
+  bool _isTransmitting = false;
+  bool get isTransmitting => _isTransmitting;
+
+  bool _abortRequested = false;
+  String? _lastError;
+  String? get lastError => _lastError;
+
+  int? _failedAtKeycode;
+  int? get failedAtKeycode => _failedAtKeycode;
+
+  int _maxRetries = 3;
+  int get maxRetries => _maxRetries;
+  set maxRetries(int v) {
+    _maxRetries = v.clamp(1, 5);
+    notifyListeners();
+  }
+
+  TransmissionService(this._ble, [this._settings]);
+
+  /// Send text through the TextBridge protocol.
+  /// Returns true if all chunks were acknowledged.
+  Future<bool> sendText(String text) async {
+    if (_isTransmitting) return false;
+    if (!_ble.state.isConnected) return false;
+
+    final result = textToKeycodes(
+      text,
+      targetOS: _settings?.targetOS ?? TargetOS.windows,
+    );
+    final keycodes = result.keycodes;
+    if (keycodes.isEmpty) {
+      _lastError = 'No mappable characters';
+      notifyListeners();
+      return false;
+    }
+
+    final chunkSize = chunkSizeFromMtu(_ble.mtu);
+    final chunks = chunkKeycodes(keycodes, chunkSize);
+
+    _isTransmitting = true;
+    _abortRequested = false;
+    _lastError = null;
+    _failedAtKeycode = null;
+    _ble.setState(TbConnectionState.transmitting);
+    _progress = TransmissionProgress(
+      sentChunks: 0,
+      totalChunks: chunks.length,
+      sentKeycodes: 0,
+      totalKeycodes: keycodes.length,
+    );
+    notifyListeners();
+
+    // Set up response queue
+    final responseQueue = StreamController<Uint8List>();
+    _responseSub = _ble.responses.listen((data) {
+      responseQueue.add(data);
+    });
+
+    try {
+      // 1. Send START
+      await _ble.write(makeStart(0, chunks.length));
+      final ready = await _waitResponse(responseQueue, respReady, const Duration(seconds: 5));
+      if (ready == null || ready[0] != respReady) {
+        _lastError = 'READY timeout';
+        return false;
+      }
+
+      // 2. Send KEYCODE chunks
+      var sentKeycodes = 0;
+      for (var i = 0; i < chunks.length; i++) {
+        if (_abortRequested) {
+          await _ble.write(makeAbort((i + 1) % 256));
+          _lastError = 'Aborted by user';
+          _failedAtKeycode = sentKeycodes;
+          return false;
+        }
+
+        final chunk = chunks[i];
+        var success = false;
+
+        for (var retry = 0; retry <= _maxRetries; retry++) {
+          if (retry > 0) {
+            await Future.delayed(const Duration(milliseconds: 100));
+          }
+          await _ble.write(chunk.toBytes());
+          final resp = await _waitResponse(responseQueue, respAck, const Duration(milliseconds: 500));
+
+          if (resp == null) {
+            if (retry == _maxRetries) {
+              _lastError = 'ACK timeout (chunk ${i + 1}/${chunks.length})';
+              _failedAtKeycode = sentKeycodes;
+              return false;
+            }
+            continue;
+          }
+
+          if (resp[0] == respAck) {
+            success = true;
+            break;
+          } else if (resp[0] == respNack) {
+            // NACK: retry
+            continue;
+          } else if (resp[0] == respError) {
+            _lastError = 'ERROR from keyboard (chunk ${i + 1})';
+            _failedAtKeycode = sentKeycodes;
+            return false;
+          }
+        }
+
+        if (!success) {
+          _lastError = 'Max retries exceeded (chunk ${i + 1})';
+          _failedAtKeycode = sentKeycodes;
+          return false;
+        }
+
+        sentKeycodes += chunk.pairs.length;
+        _progress = TransmissionProgress(
+          sentChunks: i + 1,
+          totalChunks: chunks.length,
+          sentKeycodes: sentKeycodes,
+          totalKeycodes: keycodes.length,
+        );
+        notifyListeners();
+
+        // Pacing delay: give firmware time to inject keycodes at the configured speed
+        final delayMs = _settings?.typingSpeed.delayMs ?? 5;
+        final pacingMs = chunk.pairs.length * delayMs;
+        if (pacingMs > 0) {
+          await Future.delayed(Duration(milliseconds: pacingMs));
+        }
+      }
+
+      // 3. Send DONE
+      final doneSeq = (chunks.length + 1) % 256;
+      await _ble.write(makeDone(doneSeq));
+      await _waitResponse(responseQueue, respDone, const Duration(seconds: 5));
+
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      return false;
+    } finally {
+      _isTransmitting = false;
+      _responseSub?.cancel();
+      _responseSub = null;
+      responseQueue.close();
+      if (_ble.state == TbConnectionState.transmitting) {
+        _ble.setState(TbConnectionState.connected);
+      }
+      notifyListeners();
+    }
+  }
+
+  /// Request abort of current transmission.
+  void abort() {
+    _abortRequested = true;
+  }
+
+  Future<Uint8List?> _waitResponse(
+    StreamController<Uint8List> queue,
+    int expectedCode,
+    Duration timeout,
+  ) async {
+    try {
+      return await queue.stream.first.timeout(timeout);
+    } on TimeoutException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _responseSub?.cancel();
+    super.dispose();
+  }
+}

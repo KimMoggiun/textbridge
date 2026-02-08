@@ -801,6 +801,11 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
     case id_bootloader_jump:
         sys_reboot(0x57);  // 0x57 = UF2 bootloader (NRF52BOOT)
         break;
+    case 0xFE: {
+        extern int zmk_textbridge_pair_start(void);
+        zmk_textbridge_pair_start();
+        break;
+    }
     case kc_get_protocol_version:
             command_data[0]=1;
         break;

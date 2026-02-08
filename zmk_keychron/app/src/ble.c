@@ -672,6 +672,10 @@ int zmk_ble_prof_pair_start(uint8_t index) {
             zmk_24g_pair();
         return 0;
     }
+    if (get_current_transport() == ZMK_TRANSPORT_USB) {
+        extern int zmk_textbridge_pair_start(void);
+        return zmk_textbridge_pair_start();
+    }
     if(get_current_transport()!=ZMK_TRANSPORT_BLE || (index>=3))
     {
         return -ENOTSUP;
@@ -730,6 +734,10 @@ int zmk_ble_prof_select(uint8_t index) {
           zmk_24g_reconn();
         }
         return 0;
+    }
+    if (get_current_transport() == ZMK_TRANSPORT_USB) {
+        extern int zmk_textbridge_pair_start(void);
+        return zmk_textbridge_pair_start();
     }
     if(get_current_transport()!=ZMK_TRANSPORT_BLE || (index>=3))
     {
@@ -1208,7 +1216,7 @@ int zmk_ble_init(const struct device *_arg) {
         profiles[i].bt_id = 0x0f;
     int err = bt_enable(NULL);
 
-    if (err) {
+    if (err && err != -EALREADY) {
         LOG_ERR("BLUETOOTH FAILED (%d)", err);
         return err;
     }
