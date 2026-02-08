@@ -54,6 +54,7 @@ static struct bt_uuid_128 tb_rx_uuid   = BT_UUID_INIT_128(TB_UUID(0x12340002));
 
 #define TB_MAX_KEYCODES     32
 #define TB_HID_DELAY_MS     5
+#define TB_TOGGLE_DELAY_MS  100
 #define TB_SESSION_TIMEOUT_S 30
 
 /* ---------- State ---------- */
@@ -174,32 +175,31 @@ static void tb_inject_work_handler(struct k_work *work)
         uint8_t kc = tb_kc_buf[i].keycode;
         uint8_t mod = tb_kc_buf[i].modifier;
 
-        /* Press modifier first if needed */
+        /* Register modifier + press key in same report (atomic)
+         * Avoids macOS interpreting lone Shift as CJK→English toggle */
         if (mod) {
             zmk_hid_register_mods(mod);
             tb_active_mods = mod;
-            zmk_endpoints_send_report(0x07);
-            k_msleep(TB_HID_DELAY_MS);
         }
-
-        /* Press key */
         zmk_hid_keyboard_press(kc);
         zmk_endpoints_send_report(0x07);
         k_msleep(TB_HID_DELAY_MS);
 
-        /* Release key */
+        /* Release key + modifier in same report */
         zmk_hid_keyboard_release(kc);
-        zmk_endpoints_send_report(0x07);
-
-        /* Release modifier */
         if (mod) {
-            k_msleep(TB_HID_DELAY_MS);
             zmk_hid_unregister_mods(mod);
             tb_active_mods = 0;
-            zmk_endpoints_send_report(0x07);
         }
+        zmk_endpoints_send_report(0x07);
 
-        k_msleep(TB_HID_DELAY_MS);
+        /* Extra delay after IME toggle keys */
+        if (kc == 0x90 || (kc >= 0xE0 && kc <= 0xE7) ||
+            (kc == 0x2C && mod == 0x01)) {  /* Ctrl+Space */
+            k_msleep(TB_TOGGLE_DELAY_MS);
+        } else {
+            k_msleep(TB_HID_DELAY_MS);
+        }
     }
 
     /* Send ACK if not aborted */

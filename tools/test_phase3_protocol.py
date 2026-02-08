@@ -105,14 +105,8 @@ ASCII_TO_HID['\t'] = (0x2B, 0x00)  # Tab
 
 
 def text_to_keycodes(text: str) -> list[tuple[int, int]]:
-    """텍스트를 (keycode, modifier) 리스트로 변환"""
-    result = []
-    for ch in text:
-        if ch in ASCII_TO_HID:
-            result.append(ASCII_TO_HID[ch])
-        else:
-            print(f"  [WARN] 매핑 없음: '{ch}' (U+{ord(ch):04X})")
-    return result
+    """텍스트를 (keycode, modifier) 리스트로 변환 (ASCII + 한글)"""
+    return hangul_to_keycodes(text)
 
 
 def make_start(seq: int, total_chunks: int) -> bytes:
@@ -460,6 +454,8 @@ async def test_special_chars(tb: TextBridgeClient):
 # Pre-computed keycode sequences for Korean text.
 # Toggle key: 0x90 (Windows LANG1), 0xE7 (macOS Right GUI)
 TOGGLE_WIN = (0x90, 0x00)
+TOGGLE_MAC = (0x2C, 0x01)  # Ctrl+Space — macOS input method toggle
+_toggle_key = TOGGLE_WIN  # default, changed by --os flag
 
 # Dubeolsik cho (initial consonant) keycodes
 _CHO = [
@@ -550,7 +546,7 @@ def hangul_to_keycodes(text: str) -> list[tuple[int, int]]:
         cp = ord(ch)
         if 0xAC00 <= cp <= 0xD7A3:
             if not in_korean:
-                result.append(TOGGLE_WIN)
+                result.append(_toggle_key)
                 in_korean = True
             code = cp - 0xAC00
             cho = code // 588
@@ -562,11 +558,11 @@ def hangul_to_keycodes(text: str) -> list[tuple[int, int]]:
                 result.extend(_JONG[jong])
         elif ch in ASCII_TO_HID:
             if in_korean:
-                result.append(TOGGLE_WIN)
+                result.append(_toggle_key)
                 in_korean = False
             result.append(ASCII_TO_HID[ch])
     if in_korean:
-        result.append(TOGGLE_WIN)
+        result.append(_toggle_key)
     return result
 
 
@@ -728,7 +724,14 @@ async def main():
                         help="VIA 자동 페어링 스킵 (수동 Fn+1)")
     parser.add_argument("--no-verify", action="store_true",
                         help="pynput HID 검증 스킵")
+    parser.add_argument("--os", type=str, default="win", choices=["win", "mac"],
+                        help="대상 OS (한영 전환키: win=LANG1, mac=Right GUI)")
     args = parser.parse_args()
+
+    # 한영 전환키 설정
+    global _toggle_key
+    if args.os == "mac":
+        _toggle_key = TOGGLE_MAC
 
     # 1. 자동 페어링 (--no-pair가 아닌 경우)
     if not args.no_pair and not args.scan_only:
