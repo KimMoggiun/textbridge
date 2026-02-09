@@ -7,6 +7,25 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
+| #2104 | 10:32 PM | 🟣 | App-bridge Dart-Python consistency validation completed successfully | ~447 |
+| #2102 | " | 🟣 | App-bridge comprehensive test suite initiated in background | ~384 |
+| #2101 | 10:31 PM | 🔄 | Removed unused ime_in_korean variable from test_app_bridge.py | ~126 |
+| #2100 | " | 🔴 | Fixed IME reset after Korean text using explicit protocol sequence | ~387 |
+| #2099 | " | 🔴 | Added IME reset logic to prevent Korean state carryover between tests | ~368 |
+| #2098 | " | 🔵 | Examined test_app_bridge.py run_bridge_tests function implementation | ~363 |
+| #2095 | 10:21 PM | 🟣 | Dart-Python bridge test validation completed with 100% pass rate | ~474 |
+| #2094 | " | 🟣 | Initiated complete app-firmware bridge test suite in background | ~359 |
+| #2093 | " | 🔵 | Test Case Filtering Logic for Platform-Specific Korean Tests | ~413 |
+| #2092 | " | 🔴 | Fixed test case filtering logic for macOS Korean text tests | ~351 |
+| #2091 | 10:20 PM | 🔵 | Attempted test_app_bridge.py execution to verify available test cases | ~304 |
+| #2090 | " | 🔴 | Fixed test_app_bridge.py to filter Windows-specific test cases on macOS | ~321 |
+| #2088 | 10:17 PM | 🔵 | Dart-Python keycode parity achieved after trailing toggle removal | ~346 |
+| #2087 | " | 🔴 | Removed trailing toggle key from hangul_to_keycodes function | ~333 |
+| #2086 | " | 🔄 | Streamlined test_phase3_protocol.py for silent background execution | ~373 |
+| #2085 | " | 🔵 | Confirmed Dart-Python trailing toggle keycode discrepancy | ~385 |
+| #2084 | " | 🟣 | Dart keycode export test generated JSON with 12 test cases | ~321 |
+| #2083 | 10:16 PM | 🟣 | Committed simplified test infrastructure with Claude Code terminal HID verification | ~485 |
+| #2081 | " | 🔵 | Project-wide refactoring reduced codebase by 413 lines | ~388 |
 | #2075 | 10:15 PM | 🟣 | Phase 5 comprehensive Korean text test suite completed successfully | ~414 |
 | #2068 | 10:12 PM | 🟣 | Validated Korean text with punctuation via BLE HID injection | ~307 |
 | #2064 | 10:10 PM | 🟣 | Phase 5 pure Korean text group transmission completed in background | ~362 |
@@ -38,25 +57,6 @@
 | #2030 | " | 🔄 | Removed HIDVerifier import from test_app_bridge.py | ~278 |
 | #2029 | " | 🔄 | Simplified test_phase5_hangul.py by removing pynput verification | ~351 |
 | #2028 | " | 🔄 | Removed pynput HID Verification from test_phase5_hangul.py | ~343 |
-| #2027 | 9:42 PM | 🔄 | Removed pynput verification infrastructure from test_phase5_hangul.py | ~308 |
-| #2026 | " | 🔄 | Simplified test_phase3_protocol.py to single-purpose text sender | ~415 |
-| #2025 | 9:41 PM | 🔄 | Removed verifier parameter from run_tests and test execution flow | ~302 |
-| #2024 | " | 🔄 | Removed pynput verifier dependency from test functions | ~353 |
-| #2023 | 9:40 PM | 🔄 | Removed pynput verification remnants from test functions | ~337 |
-| #2022 | " | 🔄 | Removed verify parameter from test_single_a function call | ~266 |
-| #2021 | " | 🔄 | Removed HIDVerifier logic from send_text method | ~308 |
-| #2020 | " | 🔄 | Removed HID verification from send_text method in test_phase3_protocol.py | ~332 |
-| #2019 | " | 🔄 | Removed pynput HIDVerifier class and verification dependencies | ~318 |
-| #2018 | " | 🔄 | Removed pynput HID verification infrastructure from test_phase3_protocol.py | ~402 |
-| #2017 | 9:39 PM | 🔵 | Reviewed complete test_phase3_protocol.py implementation with append_enter integration | ~371 |
-| #2015 | 9:37 PM | 🟣 | Verified --append-enter flag doesn't break existing tests | ~248 |
-| #2014 | 9:36 PM | 🟣 | Added --append-enter flag to inject Enter key for terminal validation | ~352 |
-| #2013 | " | 🟣 | Added --append-enter flag for Claude Code terminal verification | ~324 |
-| #2012 | " | 🟣 | Added append_enter Parameter to send_text Method | ~287 |
-| #2011 | 9:35 PM | 🟣 | Added Enter key append option to text_to_keycodes function | ~287 |
-| #2010 | " | 🔵 | TextBridge send_text implementation examined | ~433 |
-| #2009 | 9:34 PM | 🔵 | Phase 5 hangul E2E tests passed with protocol verification | ~457 |
-| #2008 | " | 🔵 | BLE GATT Phase 2 test validated connectivity and data transfer | ~366 |
 </claude-mem-context>
 
 # TextBridge Tools

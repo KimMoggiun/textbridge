@@ -162,6 +162,17 @@ async def run_bridge_tests(address: str, case_names: list[str], dart_data: dict)
                 results[name] = ok
                 status = "PASS" if ok else "FAIL"
                 print(f"\n  [{status}] {name}")
+
+                # 텍스트 끝이 한글이면 IME가 한글 상태 → 토글로 영어 복귀
+                text = dart_data[name]["text"]
+                last_char = text.rstrip()[-1] if text.rstrip() else ""
+                if last_char and 0xAC00 <= ord(last_char) <= 0xD7A3:
+                    await tb.write(make_start(0, 1))
+                    await tb.wait_response(RESP_READY)
+                    await tb.write(make_keycode(1, [TOGGLE_MAC]))
+                    await tb.wait_response(RESP_ACK, timeout=5.0)
+                    await tb.write(make_done(2))
+                    await tb.wait_response(RESP_DONE)
                 await asyncio.sleep(1.0)
             except Exception as e:
                 results[name] = False
@@ -227,8 +238,14 @@ async def main():
 
     # --test: BLE 전송 테스트
     if args.test:
-        case_names = list(dart_data.keys()) if args.test == "all" else \
-                     [n.strip() for n in args.test.split(",")]
+        if args.test == "all":
+            # macOS에서 실행: Windows+한글 케이스는 제외 (LANG1 토글이 macOS에서 안 됨)
+            def _has_korean(text):
+                return any(0xAC00 <= ord(c) <= 0xD7A3 for c in text)
+            case_names = [n for n, d in dart_data.items()
+                          if d["os"] == "macOS" or not _has_korean(d["text"])]
+        else:
+            case_names = [n.strip() for n in args.test.split(",")]
 
         # 먼저 Dart vs Python 비교 수행
         print(f"\n[STEP 0] Dart vs Python 키코드 비교")

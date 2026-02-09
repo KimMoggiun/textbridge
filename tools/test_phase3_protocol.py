@@ -452,8 +452,6 @@ def hangul_to_keycodes(text: str) -> list[tuple[int, int]]:
                 result.append(_toggle_key)
                 in_korean = False
             result.append(ASCII_TO_HID[ch])
-    if in_korean:
-        result.append(_toggle_key)
     return result
 
 
