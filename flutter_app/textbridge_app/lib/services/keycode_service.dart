@@ -111,20 +111,24 @@ const Map<String, KeycodePair> _asciiToHid = {
 };
 
 /// Han/Eng toggle key by OS.
-const int _toggleWindows = 0x90; // LANG1
-const int _toggleMacOS = 0xE7; // Right GUI
+const KeycodePair _toggleWindows = KeycodePair(0x90, 0x00); // LANG1
+const KeycodePair _toggleMacOS = KeycodePair(0x2C, 0x01);   // Ctrl+Space
+
 
 /// Convert a text string to a list of HID keycode pairs.
 /// Handles ASCII, Hangul syllables, and automatic Han/Eng toggle insertion.
 /// [targetOS] determines the toggle key used for Han/Eng switching.
-({List<KeycodePair> keycodes, int skippedCount}) textToKeycodes(
+/// [startInKorean] indicates the current OS IME state.
+/// Returns keycodes, skippedCount, and [endsInKorean] for state tracking.
+({List<KeycodePair> keycodes, int skippedCount, bool endsInKorean}) textToKeycodes(
   String text, {
   TargetOS targetOS = TargetOS.windows,
+  bool startInKorean = false,
 }) {
   final result = <KeycodePair>[];
   var skipped = 0;
-  var inKorean = false; // start in English mode (assumption from spec)
-  final toggleKeycode = targetOS == TargetOS.macOS ? _toggleMacOS : _toggleWindows;
+  var inKorean = startInKorean;
+  final togglePair = targetOS == TargetOS.macOS ? _toggleMacOS : _toggleWindows;
 
   for (final ch in text.split('')) {
     final cp = ch.codeUnitAt(0);
@@ -132,7 +136,7 @@ const int _toggleMacOS = 0xE7; // Right GUI
     if (HangulService.isHangulSyllable(cp)) {
       // Switch to Korean mode if needed
       if (!inKorean) {
-        result.add(KeycodePair(toggleKeycode, 0x00));
+        result.add(togglePair);
         inKorean = true;
       }
       result.addAll(HangulService.syllableToKeycodes(cp));
@@ -141,7 +145,7 @@ const int _toggleMacOS = 0xE7; // Right GUI
       if (pair != null) {
         // Switch to English mode if needed
         if (inKorean) {
-          result.add(KeycodePair(toggleKeycode, 0x00));
+          result.add(togglePair);
           inKorean = false;
         }
         result.add(pair);
@@ -151,12 +155,7 @@ const int _toggleMacOS = 0xE7; // Right GUI
     }
   }
 
-  // If we ended in Korean mode, switch back to English
-  if (inKorean) {
-    result.add(KeycodePair(toggleKeycode, 0x00));
-  }
-
-  return (keycodes: result, skippedCount: skipped);
+  return (keycodes: result, skippedCount: skipped, endsInKorean: inKorean);
 }
 
 /// Calculate chunk size from negotiated MTU.
@@ -168,14 +167,30 @@ int chunkSizeFromMtu(int mtu) {
   return size.clamp(1, 127); // at least 1, max count fits in uint8
 }
 
+/// Check if a keycode pair is a Han/Eng toggle key.
+bool _isToggleKey(KeycodePair pair) =>
+    pair == _toggleWindows || pair == _toggleMacOS;
+
 /// Split keycodes into chunks with sequence numbers.
+/// Toggle keys (Han/Eng switch) are isolated into single-keycode chunks
+/// to ensure OS input method switch completes before next keycodes.
 /// Sequence starts at 1, wraps at 256.
 List<KeycodeChunk> chunkKeycodes(List<KeycodePair> keycodes, int chunkSize) {
   final chunks = <KeycodeChunk>[];
-  for (var i = 0; i < keycodes.length; i += chunkSize) {
-    final end = (i + chunkSize > keycodes.length) ? keycodes.length : i + chunkSize;
-    final seq = (chunks.length + 1) % 256;
-    chunks.add(KeycodeChunk(seq, keycodes.sublist(i, end)));
+  var i = 0;
+  while (i < keycodes.length) {
+    if (_isToggleKey(keycodes[i])) {
+      final seq = (chunks.length + 1) % 256;
+      chunks.add(KeycodeChunk(seq, [keycodes[i]]));
+      i++;
+    } else {
+      final start = i;
+      while (i < keycodes.length && i - start < chunkSize && !_isToggleKey(keycodes[i])) {
+        i++;
+      }
+      final seq = (chunks.length + 1) % 256;
+      chunks.add(KeycodeChunk(seq, keycodes.sublist(start, i)));
+    }
   }
   return chunks;
 }

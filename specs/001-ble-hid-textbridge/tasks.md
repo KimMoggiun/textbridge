@@ -300,6 +300,25 @@ if (!tb_conn && conn) {
 
 **검증**: "자모 닭 까닭없이 값", "Hello 안녕 World 세계" 모두 macOS 터미널에서 정확히 출력.
 
+### HF-003: 토글키 별도 청크 분리 (2026-02-09)
+
+**파일**: `flutter_app/textbridge_app/lib/services/keycode_service.dart`, `tools/test_phase3_protocol.py`
+
+**증상**: 토글키(한영 전환)가 다른 키코드와 같은 청크에 포함되면, 펌웨어의 100ms 고정 딜레이만으로 OS 입력기 전환 완료를 보장할 수 없음. 순차 테스트에서 한영 전환 실패 간헐적 발생.
+
+**설계 변경**:
+- 토글키를 반드시 단독 청크(1개 키코드)로 분리하여 전송
+- 키보드가 토글키 HID 주입 + 100ms 딜레이 후 ACK 전송
+- 앱은 ACK 수신 후 다음 키코드 청크 전송
+- ACK 왕복 시간(BLE ~50ms)이 추가 버퍼가 되어 OS 전환 완료를 자연스럽게 보장
+
+**수정 범위**:
+1. `keycode_service.dart`: `chunkKeycodes()` 또는 `textToKeycodes()`에서 토글키를 청크 경계로 강제 분리
+2. `test_phase3_protocol.py`: Python `text_to_keycodes()` 동일 적용
+3. Dart 단위 테스트: 토글키 청크 분리 검증 테스트 추가
+
+**검증**: [ ] 수정 후 Dart 단위 테스트 통과, [ ] BLE E2E 테스트 통과
+
 ---
 
 ## Verification Results (2026-02-08)

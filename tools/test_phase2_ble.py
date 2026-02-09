@@ -8,8 +8,8 @@ TextBridge Phase 2 BLE GATT 테스트
 - 연결 해제
 
 사용법:
-    pip install bleak
-    python test_phase2_ble.py [--scan-only] [--timeout 10]
+    pip install bleak hidapi
+    python test_phase2_ble.py [--scan-only] [--timeout 10] [--no-pair]
 """
 
 import asyncio
@@ -21,6 +21,8 @@ try:
 except ImportError:
     print("bleak 패키지가 필요합니다: pip install bleak")
     sys.exit(1)
+
+from tb_pair import start_pairing as via_start_pairing
 
 # TextBridge UUIDs
 TB_SVC_UUID = "12340000-1234-1234-1234-123456789abc"
@@ -149,7 +151,17 @@ async def main():
                         help="스캔 타임아웃 (초, 기본: 10)")
     parser.add_argument("--address", type=str, default=None,
                         help="직접 MAC 주소 지정 (스캔 건너뛰기)")
+    parser.add_argument("--no-pair", action="store_true",
+                        help="VIA 자동 페어링 스킵 (수동 Fn+1)")
     args = parser.parse_args()
+
+    if not args.no_pair and not args.scan_only:
+        print("\n[STEP 0] VIA 명령으로 TextBridge 광고 시작")
+        if not via_start_pairing():
+            print("[WARN] VIA 페어링 실패. 수동으로 Fn+1을 누르세요.")
+        else:
+            print("[PAIR] 광고 시작 대기 (2초)...")
+            await asyncio.sleep(2.0)
 
     if args.address:
         await test_gatt(args.address)

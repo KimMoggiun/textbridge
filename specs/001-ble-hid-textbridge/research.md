@@ -272,16 +272,16 @@ Different operating systems use different HID keycodes for toggling between Hang
 | Operating System | Key Name | HID Keycode | Notes |
 |------------------|----------|-------------|-------|
 | **Windows** | 한/영 (Han/Eng) | 0x90 | HID Keyboard LANG1 |
-| **macOS** | Right Command | 0xE7 | HID Keyboard Right GUI |
+| **macOS** | Ctrl+Space | 0x2C (mod=0x01) | Ctrl modifier + Space key. Right GUI (0xE7)는 HID 인젝션 시 작동하지 않음 |
 | **Linux** | 한/영 (Han/Eng) | 0x90 | Same as Windows |
 
 ### 6.2 Usage Notes
 
 - **Windows & Linux:** The dedicated 한/영 key (LANG1, 0x90) is the standard method. Some users also configure Right Alt or other keys.
-- **macOS:** By default, users must use system preferences or Karabiner-Elements to map Right Command (0xE7) or other keys to toggle input methods. The LANG1 key may not work consistently on macOS.
+- **macOS:** Ctrl+Space (HID keycode 0x2C with Ctrl modifier 0x01)로 한영 전환. Right GUI (0xE7)는 OS-level 키 매핑이 HID 인젝션에 적용되지 않아 작동하지 않음 (2026-02-08 실제 하드웨어 테스트로 확인).
 - **Best Practice for TextBridge:** Implement OS detection and use the appropriate toggle key:
   - Windows/Linux: Send 0x90
-  - macOS: Send 0xE7 (or allow user configuration)
+  - macOS: Send Ctrl+Space (0x2C, modifier 0x01). 전환 후 100ms 딜레이 필요 (TB_TOGGLE_DELAY_MS).
 
 ---
 

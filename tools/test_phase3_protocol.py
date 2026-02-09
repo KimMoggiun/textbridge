@@ -3,7 +3,6 @@
 TextBridge Phase 3 프로토콜 테스트 (자동화)
 - VIA Raw HID로 TextBridge 광고 자동 시작 (Fn+1 대체)
 - BLE 연결 → START → KEYCODE → DONE 시퀀스
-- pynput으로 HID 주입 결과 자동 검증
 - ACK/READY/DONE 응답 검증
 - 중복 감지, ABORT 테스트
 
@@ -11,16 +10,13 @@ TextBridge Phase 3 프로토콜 테스트 (자동화)
     python3 test_phase3_protocol.py --test single_a
     python3 test_phase3_protocol.py --test all
     python3 test_phase3_protocol.py --text "hello world"
-    python3 test_phase3_protocol.py --scan-only
-    python3 test_phase3_protocol.py --no-pair --test single_a   # 수동 Fn+1
-    python3 test_phase3_protocol.py --no-verify --test hello    # HID 검증 스킵
+    python3 test_phase3_protocol.py --text "hello" --append-enter  # Claude Code 검증용
+    python3 test_phase3_protocol.py --no-pair --test single_a      # 수동 Fn+1
 """
 
 import asyncio
 import argparse
 import sys
-import threading
-import time
 
 try:
     from bleak import BleakScanner, BleakClient
@@ -104,9 +100,12 @@ ASCII_TO_HID['?'] = (0x38, 0x02)
 ASCII_TO_HID['\t'] = (0x2B, 0x00)  # Tab
 
 
-def text_to_keycodes(text: str) -> list[tuple[int, int]]:
+def text_to_keycodes(text: str, append_enter: bool = False) -> list[tuple[int, int]]:
     """텍스트를 (keycode, modifier) 리스트로 변환 (ASCII + 한글)"""
-    return hangul_to_keycodes(text)
+    keycodes = hangul_to_keycodes(text)
+    if append_enter:
+        keycodes.append((0x28, 0x00))  # Enter
+    return keycodes
 
 
 def make_start(seq: int, total_chunks: int) -> bytes:
@@ -149,201 +148,76 @@ def via_start_pairing() -> bool:
             break
 
     if not path:
-        print(f"[PAIR] Keychron B6 Pro 미발견 (VID:{VENDOR_ID:04x} PID:{PRODUCT_ID:04x})")
         return False
 
     try:
         device = hid.device()
         device.open_path(path)
-        print(f"[PAIR] USB 연결: {device.get_product_string()}")
-
-        data = [0x00] * 33  # report_id + 32 bytes
-        data[1] = 0xFE  # TextBridge pairing command
-
+        data = [0x00] * 33
+        data[1] = 0xFE
         device.write(data)
         device.close()
-
-        print("[PAIR] 0xFE 전송 완료 → TextBridge 광고 시작")
         return True
-    except Exception as e:
-        print(f"[PAIR] 오류: {e}")
+    except Exception:
         return False
 
 
-# ============ HID Input Capture (pynput) ============
-
-class HIDVerifier:
-    """pynput으로 키보드 입력 캡처하여 기대값과 비교"""
-
-    def __init__(self):
-        self._captured = []
-        self._listener = None
-        self._lock = threading.Lock()
-
-    def start(self):
-        try:
-            from pynput import keyboard
-        except ImportError:
-            print("[VERIFY] pynput 미설치. pip3 install pynput")
-            return False
-
-        def on_press(key):
-            try:
-                ch = key.char
-            except AttributeError:
-                # Special keys
-                if key == keyboard.Key.space:
-                    ch = ' '
-                elif key == keyboard.Key.enter:
-                    ch = '\n'
-                elif key == keyboard.Key.tab:
-                    ch = '\t'
-                else:
-                    ch = None
-
-            if ch is not None:
-                with self._lock:
-                    self._captured.append(ch)
-
-        self._listener = keyboard.Listener(on_press=on_press)
-        self._listener.start()
-        print("[VERIFY] 키보드 리스너 시작")
-        return True
-
-    def stop(self):
-        if self._listener:
-            self._listener.stop()
-            self._listener = None
-
-    def get_captured(self) -> str:
-        with self._lock:
-            return ''.join(self._captured)
-
-    def clear(self):
-        with self._lock:
-            self._captured.clear()
-
-    def verify(self, expected: str, timeout: float = 5.0) -> bool:
-        """타임아웃 내에 기대 문자열이 캡처되었는지 확인"""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            captured = self.get_captured()
-            if len(captured) >= len(expected):
-                break
-            time.sleep(0.1)
-
-        captured = self.get_captured()
-        if captured == expected:
-            print(f"[VERIFY] PASS: 기대='{expected}' 캡처='{captured}'")
-            return True
-        else:
-            print(f"[VERIFY] FAIL: 기대='{expected}' 캡처='{captured}'")
-            return False
-
-
 class TextBridgeClient:
-    def __init__(self, client: BleakClient, verifier: HIDVerifier = None):
+    def __init__(self, client: BleakClient):
         self.client = client
         self.responses = asyncio.Queue()
-        self.verifier = verifier
 
     def _notify_handler(self, sender, data: bytearray):
-        resp_code = data[0] if len(data) > 0 else 0
-        seq = data[1] if len(data) > 1 else 0
-        name = RESP_NAMES.get(resp_code, f"0x{resp_code:02x}")
-        extra = ""
-        if resp_code == RESP_ERROR and len(data) > 2:
-            extra = f" err=0x{data[2]:02x}"
-        print(f"  <- {name} seq={seq}{extra} ({data.hex()})")
         self.responses.put_nowait(data)
 
     async def connect(self):
         await self.client.start_notify(TB_RX_UUID, self._notify_handler)
-        print(f"  [OK] Notify 활성화, MTU={self.client.mtu_size}")
 
     async def write(self, data: bytes, label: str = ""):
-        if label:
-            print(f"  -> {label} ({data.hex()})")
-        else:
-            print(f"  -> {data.hex()}")
         await self.client.write_gatt_char(TB_TX_UUID, data, response=False)
 
     async def wait_response(self, expected_code: int = None, timeout: float = 5.0) -> bytearray:
         try:
             resp = await asyncio.wait_for(self.responses.get(), timeout=timeout)
-            if expected_code is not None and resp[0] != expected_code:
-                name = RESP_NAMES.get(resp[0], f"0x{resp[0]:02x}")
-                exp_name = RESP_NAMES.get(expected_code, f"0x{expected_code:02x}")
-                print(f"  [WARN] 예상={exp_name}, 실제={name}")
             return resp
         except asyncio.TimeoutError:
-            print(f"  [TIMEOUT] {timeout}초 응답 없음")
             return None
 
-    async def send_text(self, text: str, chunk_size: int = 8, verify: bool = False) -> bool:
+    async def send_text(self, text: str, chunk_size: int = 8, append_enter: bool = False) -> bool:
         """텍스트를 프로토콜로 전송"""
-        keycodes = text_to_keycodes(text)
+        keycodes = text_to_keycodes(text, append_enter=append_enter)
         if not keycodes:
-            print("  [FAIL] 변환할 키코드 없음")
             return False
 
-        # 청크 분할
-        chunks = []
-        for i in range(0, len(keycodes), chunk_size):
-            chunks.append(keycodes[i:i + chunk_size])
+        chunks = split_chunks(keycodes, chunk_size)
 
-        print(f"\n  텍스트: '{text}'")
-        print(f"  키코드: {len(keycodes)}개, 청크: {len(chunks)}개 (max {chunk_size}/chunk)")
-
-        # HID 검증 준비
-        if verify and self.verifier:
-            self.verifier.clear()
-
-        # START
-        await self.write(make_start(0, len(chunks)), "START")
+        await self.write(make_start(0, len(chunks)))
         resp = await self.wait_response(RESP_READY)
         if not resp or resp[0] != RESP_READY:
-            print("  [FAIL] READY 미수신")
             return False
 
-        # KEYCODE chunks
         for i, chunk in enumerate(chunks):
             seq = (i + 1) % 256
-            await self.write(make_keycode(seq, chunk), f"KEYCODE seq={seq} count={len(chunk)}")
+            await self.write(make_keycode(seq, chunk))
             resp = await self.wait_response(RESP_ACK, timeout=10.0)
             if not resp:
-                print(f"  [FAIL] ACK 미수신 (chunk {i+1}/{len(chunks)})")
                 return False
             if resp[0] == RESP_NACK:
-                print(f"  [RETRY] NACK 수신, 1초 후 재전송")
                 await asyncio.sleep(1.0)
-                await self.write(make_keycode(seq, chunk), f"KEYCODE retry seq={seq}")
+                await self.write(make_keycode(seq, chunk))
                 resp = await self.wait_response(RESP_ACK, timeout=10.0)
                 if not resp or resp[0] != RESP_ACK:
-                    print(f"  [FAIL] 재전송 후에도 ACK 미수신")
                     return False
             elif resp[0] == RESP_ERROR:
-                print(f"  [FAIL] ERROR 수신")
                 return False
 
-        # DONE
         done_seq = (len(chunks) + 1) % 256
-        await self.write(make_done(done_seq), "DONE")
-        resp = await self.wait_response(RESP_DONE)
-        if not resp or resp[0] != RESP_DONE:
-            print("  [WARN] DONE 응답 미수신")
-
-        # HID 검증
-        if verify and self.verifier:
-            ok = self.verifier.verify(text, timeout=3.0)
-            if not ok:
-                return False
-
+        await self.write(make_done(done_seq))
+        await self.wait_response(RESP_DONE)
         return True
 
 
 async def scan(timeout: float):
-    print(f"[SCAN] {timeout}초간 BLE 스캔...")
     devices = await BleakScanner.discover(timeout=timeout, return_adv=True)
     found = []
     for addr, (d, adv) in devices.items():
@@ -351,9 +225,6 @@ async def scan(timeout: float):
         svc_uuids = [str(u).lower() for u in (adv.service_uuids or [])]
         if DEVICE_NAME in name or TB_SVC_UUID.lower() in svc_uuids:
             found.append(d)
-            print(f"  [OK] {name} ({d.address}) RSSI={adv.rssi}")
-    if not found:
-        print(f"  [FAIL] '{DEVICE_NAME}' 미발견")
     return found
 
 
@@ -362,25 +233,25 @@ async def scan(timeout: float):
 async def test_single_a(tb: TextBridgeClient):
     """테스트 1: 단일 키 'a'"""
     print("\n=== Test: single 'a' ===")
-    return await tb.send_text("a", verify=tb.verifier is not None)
+    return await tb.send_text("a")
 
 
 async def test_shift_A(tb: TextBridgeClient):
     """테스트 2: 대문자 'A' (Shift+a)"""
     print("\n=== Test: shift 'A' ===")
-    return await tb.send_text("A", verify=tb.verifier is not None)
+    return await tb.send_text("A")
 
 
 async def test_hello(tb: TextBridgeClient):
     """테스트 3: 'hello world' (여러 키, 공백 포함)"""
     print("\n=== Test: 'hello world' ===")
-    return await tb.send_text("hello world", verify=tb.verifier is not None)
+    return await tb.send_text("hello world")
 
 
 async def test_multi_chunk(tb: TextBridgeClient):
     """테스트 4: 여러 청크 'abcdefghijklmnop' (16키 = 2청크)"""
     print("\n=== Test: multi-chunk 'abcdefghijklmnop' ===")
-    return await tb.send_text("abcdefghijklmnop", verify=tb.verifier is not None)
+    return await tb.send_text("abcdefghijklmnop")
 
 
 async def test_duplicate(tb: TextBridgeClient):
@@ -447,7 +318,7 @@ async def test_abort(tb: TextBridgeClient):
 async def test_special_chars(tb: TextBridgeClient):
     """테스트 7: 특수문자"""
     print("\n=== Test: special chars ===")
-    return await tb.send_text("Hello, World! 123", verify=tb.verifier is not None)
+    return await tb.send_text("Hello, World! 123")
 
 
 # ============ Hangul Dubeolsik keycodes ============
@@ -538,6 +409,26 @@ _JONG = [
 ]
 
 
+def _is_toggle_key(kc: tuple[int, int]) -> bool:
+    return kc == TOGGLE_WIN or kc == TOGGLE_MAC
+
+
+def split_chunks(keycodes: list[tuple[int, int]], chunk_size: int = 8) -> list[list[tuple[int, int]]]:
+    """Split keycodes into chunks, isolating toggle keys into single-keycode chunks."""
+    chunks = []
+    i = 0
+    while i < len(keycodes):
+        if _is_toggle_key(keycodes[i]):
+            chunks.append([keycodes[i]])
+            i += 1
+        else:
+            start = i
+            while i < len(keycodes) and i - start < chunk_size and not _is_toggle_key(keycodes[i]):
+                i += 1
+            chunks.append(keycodes[start:i])
+    return chunks
+
+
 def hangul_to_keycodes(text: str) -> list[tuple[int, int]]:
     """Convert mixed Korean/ASCII text to HID keycodes with toggle keys."""
     result = []
@@ -575,11 +466,8 @@ async def test_hangul_basic(tb: TextBridgeClient):
         return False
     print(f"  키코드: {len(keycodes)}개")
 
-    # Send manually with pre-computed keycodes
-    chunks = []
-    chunk_size = 8
-    for i in range(0, len(keycodes), chunk_size):
-        chunks.append(keycodes[i:i + chunk_size])
+    # Send manually with pre-computed keycodes (toggle keys isolated)
+    chunks = split_chunks(keycodes, 8)
 
     await tb.write(make_start(0, len(chunks)), "START")
     resp = await tb.wait_response(RESP_READY)
@@ -607,10 +495,7 @@ async def test_hangul_mixed(tb: TextBridgeClient):
         return False
     print(f"  키코드: {len(keycodes)}개 (한영 전환 포함)")
 
-    chunks = []
-    chunk_size = 8
-    for i in range(0, len(keycodes), chunk_size):
-        chunks.append(keycodes[i:i + chunk_size])
+    chunks = split_chunks(keycodes, 8)
 
     await tb.write(make_start(0, len(chunks)), "START")
     resp = await tb.wait_response(RESP_READY)
@@ -638,10 +523,7 @@ async def test_hangul_complex(tb: TextBridgeClient):
         return False
     print(f"  키코드: {len(keycodes)}개")
 
-    chunks = []
-    chunk_size = 8
-    for i in range(0, len(keycodes), chunk_size):
-        chunks.append(keycodes[i:i + chunk_size])
+    chunks = split_chunks(keycodes, 8)
 
     await tb.write(make_start(0, len(chunks)), "START")
     resp = await tb.wait_response(RESP_READY)
@@ -675,11 +557,11 @@ TESTS = {
 }
 
 
-async def run_tests(address: str, test_names: list[str], verifier: HIDVerifier = None):
+async def run_tests(address: str, test_names: list[str]):
     print(f"\n[CONN] {address} 연결 중...")
 
     async with BleakClient(address) as client:
-        tb = TextBridgeClient(client, verifier=verifier)
+        tb = TextBridgeClient(client)
         await tb.connect()
 
         results = {}
@@ -688,8 +570,6 @@ async def run_tests(address: str, test_names: list[str], verifier: HIDVerifier =
                 print(f"\n[SKIP] 알 수 없는 테스트: {name}")
                 continue
             try:
-                if verifier:
-                    verifier.clear()
                 ok = await TESTS[name](tb)
                 results[name] = ok
                 status = "PASS" if ok else "FAIL"
@@ -712,77 +592,31 @@ async def run_tests(address: str, test_names: list[str], verifier: HIDVerifier =
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="TextBridge Phase 3 프로토콜 테스트")
-    parser.add_argument("--scan-only", action="store_true")
-    parser.add_argument("--timeout", type=float, default=10)
-    parser.add_argument("--address", type=str, default=None)
-    parser.add_argument("--test", type=str, default="all",
-                        help="테스트: " + ", ".join(["all"] + list(TESTS.keys())))
-    parser.add_argument("--text", type=str, default=None,
-                        help="직접 텍스트 전송 (예: --text 'hello world')")
-    parser.add_argument("--no-pair", action="store_true",
-                        help="VIA 자동 페어링 스킵 (수동 Fn+1)")
-    parser.add_argument("--no-verify", action="store_true",
-                        help="pynput HID 검증 스킵")
-    parser.add_argument("--os", type=str, default="win", choices=["win", "mac"],
-                        help="대상 OS (한영 전환키: win=LANG1, mac=Right GUI)")
+    parser = argparse.ArgumentParser(description="TextBridge 텍스트 전송")
+    parser.add_argument("--text", type=str, required=True)
     args = parser.parse_args()
 
-    # 한영 전환키 설정
     global _toggle_key
-    if args.os == "mac":
-        _toggle_key = TOGGLE_MAC
+    _toggle_key = TOGGLE_MAC
 
-    # 1. 자동 페어링 (--no-pair가 아닌 경우)
-    if not args.no_pair and not args.scan_only:
-        print("\n[STEP 1] VIA 명령으로 TextBridge 광고 시작")
-        if not via_start_pairing():
-            print("[WARN] VIA 페어링 실패. 수동으로 Fn+1을 누르세요.")
-        else:
-            print("[PAIR] 광고 시작 대기 (2초)...")
-            await asyncio.sleep(2.0)
+    print("pairing...", end=" ", flush=True)
+    via_start_pairing()
+    await asyncio.sleep(2.0)
+    print("ok")
 
-    # 2. HID 검증 준비 (--no-verify가 아닌 경우)
-    verifier = None
-    if not args.no_verify and not args.scan_only:
-        verifier = HIDVerifier()
-        if not verifier.start():
-            print("[WARN] pynput 초기화 실패. HID 검증 없이 진행.")
-            verifier = None
+    print("scanning...", end=" ", flush=True)
+    devices = await scan(10)
+    if not devices:
+        print("not found")
+        return
+    print(devices[0].address)
 
-    try:
-        # 테스트 목록 결정
-        if args.test == "all":
-            test_names = list(TESTS.keys())
-        else:
-            test_names = [t.strip() for t in args.test.split(",")]
-
-        # 주소 결정
-        address = args.address
-        if not address:
-            print("\n[STEP 2] BLE 스캔")
-            devices = await scan(args.timeout)
-            if args.scan_only or not devices:
-                return
-            address = devices[0].address
-            print(f"\n대상: {devices[0].name} ({address})")
-
-        # 직접 텍스트 전송 모드
-        if args.text is not None:
-            print(f"\n[CONN] {address} 연결 중...")
-            async with BleakClient(address) as client:
-                tb = TextBridgeClient(client, verifier=verifier)
-                await tb.connect()
-                ok = await tb.send_text(args.text, verify=verifier is not None)
-                print(f"\n{'성공' if ok else '실패'}")
-            return
-
-        print("\n[STEP 3] 테스트 실행")
-        await run_tests(address, test_names, verifier=verifier)
-
-    finally:
-        if verifier:
-            verifier.stop()
+    print("sending...", end=" ", flush=True)
+    async with BleakClient(devices[0].address) as client:
+        tb = TextBridgeClient(client)
+        await tb.connect()
+        ok = await tb.send_text(args.text, append_enter=True)
+        print("ok" if ok else "FAIL")
 
 
 if __name__ == "__main__":

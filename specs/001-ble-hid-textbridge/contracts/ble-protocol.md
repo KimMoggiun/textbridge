@@ -135,6 +135,42 @@ Phone                    Keyboard
   │←── DONE (seq=3) ───────│
 ```
 
+### Toggle Key Flow (한영 전환)
+
+토글키(한영 전환)는 반드시 단독 청크(1개 키코드)로 분리하여 전송한다.
+키보드는 토글키 HID 주입 후 100ms 딜레이를 거친 뒤 ACK를 전송한다.
+앱은 ACK를 수신한 후에 다음 키코드 청크를 전송한다.
+
+```
+Phone                    Keyboard
+  │                         │
+  │── START (seq=0) ───────→│
+  │←── READY (seq=0) ──────│
+  │                         │
+  │── KEYCODE (seq=1) ─────→│  ← "Hello " 영문 키코드 (6쌍)
+  │←── ACK (seq=1) ────────│
+  │                         │
+  │── KEYCODE (seq=2) ─────→│  ← 토글키 1개만 (Ctrl+Space 또는 LANG1)
+  │  (keyboard: HID inject   │
+  │   + 100ms delay + ACK)   │
+  │←── ACK (seq=2) ────────│  ← OS 입력기 전환 완료 보장
+  │                         │
+  │── KEYCODE (seq=3) ─────→│  ← "안녕" 한글 자모 키코드
+  │←── ACK (seq=3) ────────│
+  │                         │
+  │── KEYCODE (seq=4) ─────→│  ← 토글키 1개만 (영문 복귀)
+  │←── ACK (seq=4) ────────│
+  │                         │
+  │── KEYCODE (seq=5) ─────→│  ← " World" 영문 키코드
+  │←── ACK (seq=5) ────────│
+  │                         │
+  │── DONE (seq=6) ────────→│
+  │←── DONE (seq=6) ───────│
+```
+
+**규칙**: 앱의 `textToKeycodes()`에서 토글키를 청크 경계로 강제 분리한다.
+토글키가 청크 중간에 있으면 해당 위치에서 청크를 분할한다.
+
 ### Retry Flow (ACK Timeout)
 
 ```
