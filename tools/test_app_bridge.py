@@ -162,18 +162,7 @@ async def run_bridge_tests(address: str, case_names: list[str], dart_data: dict)
                 results[name] = ok
                 status = "PASS" if ok else "FAIL"
                 print(f"\n  [{status}] {name}")
-
-                # 텍스트 끝이 한글이면 IME가 한글 상태 → 토글로 영어 복귀
-                text = dart_data[name]["text"]
-                last_char = text.rstrip()[-1] if text.rstrip() else ""
-                if last_char and 0xAC00 <= ord(last_char) <= 0xD7A3:
-                    await tb.write(make_start(0, 1))
-                    await tb.wait_response(RESP_READY)
-                    await tb.write(make_keycode(1, [TOGGLE_MAC]))
-                    await tb.wait_response(RESP_ACK, timeout=5.0)
-                    await tb.write(make_done(2))
-                    await tb.wait_response(RESP_DONE)
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.5)
             except Exception as e:
                 results[name] = False
                 print(f"\n  [ERROR] {name}: {e}")

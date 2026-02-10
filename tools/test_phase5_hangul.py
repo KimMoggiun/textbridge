@@ -96,7 +96,7 @@ async def main():
                 print(f"{text}...", end=" ", flush=True)
                 ok = await tb.send_text(text, append_enter=True)
                 print("ok" if ok else "FAIL")
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.5)
 
         await asyncio.sleep(2.0)
 

@@ -100,9 +100,14 @@ ASCII_TO_HID['?'] = (0x38, 0x02)
 ASCII_TO_HID['\t'] = (0x2B, 0x00)  # Tab
 
 
-def text_to_keycodes(text: str, append_enter: bool = False) -> list[tuple[int, int]]:
-    """텍스트를 (keycode, modifier) 리스트로 변환 (ASCII + 한글)"""
+def text_to_keycodes(text: str, append_enter: bool = False, trailing_toggle: bool = True) -> list[tuple[int, int]]:
+    """텍스트를 (keycode, modifier) 리스트로 변환 (ASCII + 한글)
+    trailing_toggle: 텍스트 끝이 한글이면 영어로 복귀하는 토글 추가 (테스트용)"""
     keycodes = hangul_to_keycodes(text)
+    if trailing_toggle and text:
+        last_char = text.rstrip()[-1] if text.rstrip() else ""
+        if last_char and 0xAC00 <= ord(last_char) <= 0xD7A3:
+            keycodes.append(_toggle_key)
     if append_enter:
         keycodes.append((0x28, 0x00))  # Enter
     return keycodes
