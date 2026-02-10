@@ -98,10 +98,13 @@ IDLE ──START──→ READY ──KEYCODE──→ SENDING ──ACK──�
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | targetOS | enum | Windows | Windows / macOS |
-| typingSpeed | enum | Normal | Safe(10ms) / Normal(5ms) / Fast(1ms) |
+| keyDelay | int | 5 | 키 간 딜레이 ms (release → next press, 1~255) |
+| comboDelay | int | 2 | modifier 조합 내 딜레이 ms (modifier → key, 1~255) |
+| toggleDelay | int | 100 | IME 토글키 release 후 대기 ms (1~255) |
 | lastDeviceAddress | String? | null | 마지막 연결 기기 BLE 주소 |
 
 **Storage**: SharedPreferences (key-value)
+**Sync**: BLE 연결 시 `CMD_SET_DELAY`로 펌웨어에 전송
 
 ## Relationships
 

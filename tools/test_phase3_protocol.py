@@ -35,7 +35,8 @@ DEVICE_NAME = "B6 TextBridge"
 CMD_KEYCODE = 0x01
 CMD_START   = 0x02
 CMD_DONE    = 0x03
-CMD_ABORT   = 0x04
+CMD_ABORT     = 0x04
+CMD_SET_DELAY = 0x05
 
 # Protocol responses
 RESP_ACK    = 0x01
@@ -100,14 +101,10 @@ ASCII_TO_HID['?'] = (0x38, 0x02)
 ASCII_TO_HID['\t'] = (0x2B, 0x00)  # Tab
 
 
-def text_to_keycodes(text: str, append_enter: bool = False, trailing_toggle: bool = True) -> list[tuple[int, int]]:
+def text_to_keycodes(text: str, append_enter: bool = False) -> list[tuple[int, int]]:
     """텍스트를 (keycode, modifier) 리스트로 변환 (ASCII + 한글)
-    trailing_toggle: 텍스트 끝이 한글이면 영어로 복귀하는 토글 추가 (테스트용)"""
+    hangul_to_keycodes가 trailing toggle을 자동 추가하므로 항상 영문으로 끝남."""
     keycodes = hangul_to_keycodes(text)
-    if trailing_toggle and text:
-        last_char = text.rstrip()[-1] if text.rstrip() else ""
-        if last_char and 0xAC00 <= ord(last_char) <= 0xD7A3:
-            keycodes.append(_toggle_key)
     if append_enter:
         keycodes.append((0x28, 0x00))  # Enter
     return keycodes
@@ -130,6 +127,17 @@ def make_done(seq: int) -> bytes:
 
 def make_abort(seq: int) -> bytes:
     return bytes([CMD_ABORT, seq])
+
+
+def make_set_delay(press_delay: int = 5, release_delay: int = 5, combo_delay: int = 2,
+                   toggle_press: int = 20, toggle_delay: int = 100, warmup_delay: int = 50) -> bytes:
+    return bytes([CMD_SET_DELAY,
+                  max(1, min(255, press_delay)),
+                  max(1, min(255, release_delay)),
+                  max(1, min(255, combo_delay)),
+                  max(1, min(255, toggle_press)),
+                  max(1, min(255, toggle_delay)),
+                  max(1, min(255, warmup_delay))])
 
 
 # ============ VIA Raw HID Pairing ============
@@ -188,6 +196,14 @@ class TextBridgeClient:
         except asyncio.TimeoutError:
             return None
 
+    async def set_delay(self, press_delay: int = 5, release_delay: int = 5, combo_delay: int = 2,
+                        toggle_press: int = 20, toggle_delay: int = 100, warmup_delay: int = 50) -> bool:
+        """Send CMD_SET_DELAY to configure firmware timing"""
+        await self.write(make_set_delay(press_delay, release_delay, combo_delay,
+                                        toggle_press, toggle_delay, warmup_delay), "SET_DELAY")
+        resp = await self.wait_response(RESP_ACK, timeout=2.0)
+        return resp is not None and resp[0] == RESP_ACK
+
     async def send_text(self, text: str, chunk_size: int = 8, append_enter: bool = False) -> bool:
         """텍스트를 프로토콜로 전송"""
         keycodes = text_to_keycodes(text, append_enter=append_enter)
@@ -203,6 +219,10 @@ class TextBridgeClient:
 
         for i, chunk in enumerate(chunks):
             seq = (i + 1) % 256
+            # Enter 청크 전 딜레이: macOS IME composition end 이벤트 처리 대기
+            # toggle_delay(100ms) 이후에도 Electron 앱에서 Enter가 줄바꿈으로 처리될 수 있음
+            if any(kc[0] == 0x28 for kc in chunk) and i > 0:
+                await asyncio.sleep(0.3)
             await self.write(make_keycode(seq, chunk))
             resp = await self.wait_response(RESP_ACK, timeout=10.0)
             if not resp:
@@ -435,7 +455,8 @@ def split_chunks(keycodes: list[tuple[int, int]], chunk_size: int = 8) -> list[l
 
 
 def hangul_to_keycodes(text: str) -> list[tuple[int, int]]:
-    """Convert mixed Korean/ASCII text to HID keycodes with toggle keys."""
+    """Convert mixed Korean/ASCII text to HID keycodes with toggle keys.
+    Always ends in English mode — trailing toggle added if text ends in Korean."""
     result = []
     in_korean = False
     for ch in text:
@@ -457,6 +478,9 @@ def hangul_to_keycodes(text: str) -> list[tuple[int, int]]:
                 result.append(_toggle_key)
                 in_korean = False
             result.append(ASCII_TO_HID[ch])
+    # Always return to English mode
+    if in_korean:
+        result.append(_toggle_key)
     return result
 
 
@@ -618,6 +642,7 @@ async def main():
     async with BleakClient(devices[0].address) as client:
         tb = TextBridgeClient(client)
         await tb.connect()
+        await tb.set_delay(press_delay=5, release_delay=5, combo_delay=20, toggle_press=20, toggle_delay=100, warmup_delay=50)
         ok = await tb.send_text(args.text, append_enter=True)
         print("ok" if ok else "FAIL")
 

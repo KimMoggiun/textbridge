@@ -411,10 +411,10 @@
   "hangul_pure_win": {
     "text": "안녕하세요",
     "os": "Windows",
-    "keycode_count": 13,
+    "keycode_count": 14,
     "skipped_count": 0,
-    "ends_in_korean": true,
-    "chunk_count": 3,
+    "ends_in_korean": false,
+    "chunk_count": 4,
     "chunk_size": 8,
     "keycodes": [
       [
@@ -468,6 +468,10 @@
       [
         28,
         0
+      ],
+      [
+        144,
+        0
       ]
     ],
     "packets": [
@@ -477,7 +481,7 @@
           2,
           0,
           0,
-          3
+          4
         ]
       },
       {
@@ -537,10 +541,22 @@
         ]
       },
       {
+        "type": "KEYCODE",
+        "seq": 4,
+        "count": 1,
+        "bytes": [
+          1,
+          4,
+          1,
+          144,
+          0
+        ]
+      },
+      {
         "type": "DONE",
         "bytes": [
           3,
-          4
+          5
         ]
       }
     ]
@@ -548,10 +564,10 @@
   "hangul_mixed_win": {
     "text": "Hello 안녕 World 세계",
     "os": "Windows",
-    "keycode_count": 26,
+    "keycode_count": 27,
     "skipped_count": 0,
-    "ends_in_korean": true,
-    "chunk_count": 7,
+    "ends_in_korean": false,
+    "chunk_count": 8,
     "chunk_size": 8,
     "keycodes": [
       [
@@ -657,6 +673,10 @@
       [
         19,
         2
+      ],
+      [
+        144,
+        0
       ]
     ],
     "packets": [
@@ -666,7 +686,7 @@
           2,
           0,
           0,
-          7
+          8
         ]
       },
       {
@@ -792,10 +812,22 @@
         ]
       },
       {
+        "type": "KEYCODE",
+        "seq": 8,
+        "count": 1,
+        "bytes": [
+          1,
+          8,
+          1,
+          144,
+          0
+        ]
+      },
+      {
         "type": "DONE",
         "bytes": [
           3,
-          8
+          9
         ]
       }
     ]
@@ -803,10 +835,10 @@
   "hangul_complex_win": {
     "text": "까닭없이",
     "os": "Windows",
-    "keycode_count": 13,
+    "keycode_count": 14,
     "skipped_count": 0,
-    "ends_in_korean": true,
-    "chunk_count": 3,
+    "ends_in_korean": false,
+    "chunk_count": 4,
     "chunk_size": 8,
     "keycodes": [
       [
@@ -860,6 +892,10 @@
       [
         15,
         0
+      ],
+      [
+        144,
+        0
       ]
     ],
     "packets": [
@@ -869,7 +905,7 @@
           2,
           0,
           0,
-          3
+          4
         ]
       },
       {
@@ -929,10 +965,22 @@
         ]
       },
       {
+        "type": "KEYCODE",
+        "seq": 4,
+        "count": 1,
+        "bytes": [
+          1,
+          4,
+          1,
+          144,
+          0
+        ]
+      },
+      {
         "type": "DONE",
         "bytes": [
           3,
-          4
+          5
         ]
       }
     ]
@@ -940,10 +988,10 @@
   "hangul_jamo_win": {
     "text": "자모 닭 까닭없이 값",
     "os": "Windows",
-    "keycode_count": 34,
+    "keycode_count": 35,
     "skipped_count": 0,
-    "ends_in_korean": true,
-    "chunk_count": 15,
+    "ends_in_korean": false,
+    "chunk_count": 16,
     "chunk_size": 8,
     "keycodes": [
       [
@@ -1081,6 +1129,10 @@
       [
         23,
         0
+      ],
+      [
+        144,
+        0
       ]
     ],
     "packets": [
@@ -1090,7 +1142,7 @@
           2,
           0,
           0,
-          15
+          16
         ]
       },
       {
@@ -1312,10 +1364,22 @@
         ]
       },
       {
+        "type": "KEYCODE",
+        "seq": 16,
+        "count": 1,
+        "bytes": [
+          1,
+          16,
+          1,
+          144,
+          0
+        ]
+      },
+      {
         "type": "DONE",
         "bytes": [
           3,
-          16
+          17
         ]
       }
     ]
@@ -1323,10 +1387,10 @@
   "hangul_pure_mac": {
     "text": "안녕하세요",
     "os": "macOS",
-    "keycode_count": 13,
+    "keycode_count": 14,
     "skipped_count": 0,
-    "ends_in_korean": true,
-    "chunk_count": 3,
+    "ends_in_korean": false,
+    "chunk_count": 4,
     "chunk_size": 8,
     "keycodes": [
       [
@@ -1380,6 +1444,10 @@
       [
         28,
         0
+      ],
+      [
+        44,
+        1
       ]
     ],
     "packets": [
@@ -1389,7 +1457,7 @@
           2,
           0,
           0,
-          3
+          4
         ]
       },
       {
@@ -1449,10 +1517,22 @@
         ]
       },
       {
+        "type": "KEYCODE",
+        "seq": 4,
+        "count": 1,
+        "bytes": [
+          1,
+          4,
+          1,
+          44,
+          1
+        ]
+      },
+      {
         "type": "DONE",
         "bytes": [
           3,
-          4
+          5
         ]
       }
     ]
@@ -1460,10 +1540,10 @@
   "hangul_mixed_mac": {
     "text": "Hello 안녕 World 세계",
     "os": "macOS",
-    "keycode_count": 26,
+    "keycode_count": 27,
     "skipped_count": 0,
-    "ends_in_korean": true,
-    "chunk_count": 7,
+    "ends_in_korean": false,
+    "chunk_count": 8,
     "chunk_size": 8,
     "keycodes": [
       [
@@ -1569,6 +1649,10 @@
       [
         19,
         2
+      ],
+      [
+        44,
+        1
       ]
     ],
     "packets": [
@@ -1578,7 +1662,7 @@
           2,
           0,
           0,
-          7
+          8
         ]
       },
       {
@@ -1704,10 +1788,22 @@
         ]
       },
       {
+        "type": "KEYCODE",
+        "seq": 8,
+        "count": 1,
+        "bytes": [
+          1,
+          8,
+          1,
+          44,
+          1
+        ]
+      },
+      {
         "type": "DONE",
         "bytes": [
           3,
-          8
+          9
         ]
       }
     ]
@@ -1715,10 +1811,10 @@
   "hangul_complex_mac": {
     "text": "까닭없이",
     "os": "macOS",
-    "keycode_count": 13,
+    "keycode_count": 14,
     "skipped_count": 0,
-    "ends_in_korean": true,
-    "chunk_count": 3,
+    "ends_in_korean": false,
+    "chunk_count": 4,
     "chunk_size": 8,
     "keycodes": [
       [
@@ -1772,6 +1868,10 @@
       [
         15,
         0
+      ],
+      [
+        44,
+        1
       ]
     ],
     "packets": [
@@ -1781,7 +1881,7 @@
           2,
           0,
           0,
-          3
+          4
         ]
       },
       {
@@ -1841,10 +1941,22 @@
         ]
       },
       {
+        "type": "KEYCODE",
+        "seq": 4,
+        "count": 1,
+        "bytes": [
+          1,
+          4,
+          1,
+          44,
+          1
+        ]
+      },
+      {
         "type": "DONE",
         "bytes": [
           3,
-          4
+          5
         ]
       }
     ]

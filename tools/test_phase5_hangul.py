@@ -91,12 +91,15 @@ async def main():
         async with BleakClient(devices[0].address) as client:
             tb = TextBridgeClient(client)
             await tb.connect()
+            await tb.set_delay(press_delay=5, release_delay=5, combo_delay=20, toggle_press=20, toggle_delay=100, warmup_delay=50)
 
             for text in group["texts"]:
+                # 매 텍스트 전 딜레이 재설정 (값 유실 방지)
+                await tb.set_delay(press_delay=15, release_delay=15, combo_delay=30, toggle_press=20, toggle_delay=100, warmup_delay=50)
                 print(f"{text}...", end=" ", flush=True)
                 ok = await tb.send_text(text, append_enter=True)
                 print("ok" if ok else "FAIL")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(1.0)  # IME 상태 안정화 대기
 
         await asyncio.sleep(2.0)
 

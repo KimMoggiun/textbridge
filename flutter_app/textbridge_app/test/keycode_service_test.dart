@@ -100,23 +100,24 @@ void main() {
       expect(result.skippedCount, 4);
     });
 
-    test('pure Hangul text produces keycodes with toggle at start only', () {
+    test('pure Hangul text has toggle at start AND trailing toggle', () {
       // 한글 = two Hangul syllables
-      // Expected: toggle(enter Korean) + 한 keycodes + 글 keycodes (no trailing toggle)
+      // Expected: toggle(enter Korean) + 한 keycodes + 글 keycodes + toggle(back to English)
       final result = textToKeycodes('\u{D55C}\u{AE00}');
       expect(result.skippedCount, 0);
-      expect(result.endsInKorean, true);
       // First: toggle to Korean
       expect(result.keycodes.first, const KeycodePair(0x90, 0x00));
-      // Last: 글's final jamo (not a toggle)
-      expect(result.keycodes.last, isNot(const KeycodePair(0x90, 0x00)));
+      // Last: trailing toggle back to English
+      expect(result.keycodes.last, const KeycodePair(0x90, 0x00));
+      // toggle + 한(ㅎㅏㄴ=3) + 글(ㄱㅡㄹ=3) + trailing toggle = 8
+      expect(result.keycodes.length, 8);
     });
 
     test('mixed English and Hangul with toggle keys (Windows)', () {
       // "a한b" → a + toggle + 한(keycodes) + toggle + b
+      // No trailing toggle needed (already in English at end)
       final result = textToKeycodes('a\u{D55C}b', targetOS: TargetOS.windows);
       expect(result.skippedCount, 0);
-      expect(result.endsInKorean, false);
       // a
       expect(result.keycodes[0], const KeycodePair(0x04, 0x00));
       // toggle to Korean (0x90)
@@ -136,7 +137,6 @@ void main() {
       // "a한b" → a + toggle + 한(keycodes) + toggle + b
       final result = textToKeycodes('a\u{D55C}b', targetOS: TargetOS.macOS);
       expect(result.skippedCount, 0);
-      expect(result.endsInKorean, false);
       // a
       expect(result.keycodes[0], const KeycodePair(0x04, 0x00));
       // toggle to Korean (macOS: Ctrl+Space = 0x2C, mod=0x01)
@@ -151,11 +151,11 @@ void main() {
       expect(result.keycodes[6], const KeycodePair(0x05, 0x00));
     });
 
-    test('contiguous Hangul segments merge (no extra toggles)', () {
-      // 안녕 = two Hangul syllables, only 1 toggle pair needed, no trailing toggle
+    test('contiguous Hangul segments have trailing toggle', () {
+      // 안녕 = two Hangul syllables
+      // toggle + 안(3) + 녕(3) + trailing toggle = 8
       final result = textToKeycodes('\u{C548}\u{B155}');
       expect(result.skippedCount, 0);
-      expect(result.endsInKorean, true);
       // toggle to Korean
       expect(result.keycodes[0], const KeycodePair(0x90, 0x00));
       // 안: D(0x07) K(0x0E) S(0x16)
@@ -166,16 +166,16 @@ void main() {
       expect(result.keycodes[4], const KeycodePair(0x16, 0x00));
       expect(result.keycodes[5], const KeycodePair(0x18, 0x00));
       expect(result.keycodes[6], const KeycodePair(0x07, 0x00));
-      // no trailing toggle — ends in Korean
-      expect(result.keycodes.length, 7);
+      // trailing toggle back to English
+      expect(result.keycodes[7], const KeycodePair(0x90, 0x00));
+      expect(result.keycodes.length, 8);
     });
 
     test('multiple language switches', () {
-      // "Hi안녕ok" → H,i + toggle + 안녕 + toggle + o,k (ends in English)
+      // "Hi안녕ok" → H,i + toggle + 안녕 + toggle + o,k (ends in English, no trailing)
       final result = textToKeycodes('Hi\u{C548}\u{B155}ok');
       expect(result.skippedCount, 0);
-      expect(result.endsInKorean, false);
-      // H(shift), i, toggle, 안(3 keys), 녕(3 keys), toggle, o, k
+      // H(shift), i, toggle, 안(3 keys), 녕(3 keys), toggle, o, k = 12
       expect(result.keycodes.length, 12);
       // H
       expect(result.keycodes[0], const KeycodePair(0x0B, 0x02));
@@ -191,21 +191,20 @@ void main() {
       expect(result.keycodes[11], const KeycodePair(0x0E, 0x00));
     });
 
-    test('text ending in Korean has no trailing toggle', () {
-      // "a한" → a + toggle + 한 keycodes (no trailing toggle)
+    test('text ending in Korean has trailing toggle', () {
+      // "a한" → a + toggle + 한 keycodes + trailing toggle
       final result = textToKeycodes('a\u{D55C}');
-      expect(result.endsInKorean, true);
-      // a, toggle, ㅎ, ㅏ, ㄴ = 5 keycodes (no trailing toggle)
-      expect(result.keycodes.length, 5);
+      // a, toggle, ㅎ, ㅏ, ㄴ, trailing toggle = 6 keycodes
+      expect(result.keycodes.length, 6);
+      expect(result.keycodes.last, const KeycodePair(0x90, 0x00));
     });
 
-    test('startInKorean skips initial toggle', () {
-      // 한 with startInKorean=true → no toggle, just jamo
-      final result = textToKeycodes('\u{D55C}', startInKorean: true);
-      expect(result.endsInKorean, true);
-      // ㅎ, ㅏ, ㄴ = 3 keycodes (no toggles at all)
-      expect(result.keycodes.length, 3);
-      expect(result.keycodes[0], const KeycodePair(0x0A, 0x00)); // ㅎ
+    test('text ending in English has no trailing toggle', () {
+      // "한a" → toggle + 한 keycodes + toggle + a (no trailing toggle needed)
+      final result = textToKeycodes('\u{D55C}a');
+      // toggle, ㅎ, ㅏ, ㄴ, toggle, a = 6 keycodes
+      expect(result.keycodes.length, 6);
+      expect(result.keycodes.last, const KeycodePair(0x04, 0x00)); // a
     });
   });
 
@@ -271,15 +270,17 @@ void main() {
       expect(chunks[3].pairs, [const KeycodePair(0x2C, 0x01)]); // Ctrl+Space
     });
 
-    test('pure Hangul: toggle isolated at start', () {
-      // "안녕" → toggle, 안(3), 녕(3) = 7 keycodes
+    test('pure Hangul: toggle isolated at start and trailing toggle at end', () {
+      // "안녕" → toggle, 안(3), 녕(3), trailing toggle = 8 keycodes
       final keycodes = textToKeycodes('\u{C548}\u{B155}').keycodes;
       final chunks = chunkKeycodes(keycodes, 8);
-      // [toggle], [안녕 jamo × 6] = 2 chunks
-      expect(chunks.length, 2);
+      // [toggle], [안녕 jamo × 6], [trailing toggle] = 3 chunks
+      expect(chunks.length, 3);
       expect(chunks[0].pairs.length, 1); // toggle alone
       expect(chunks[0].pairs[0], const KeycodePair(0x90, 0x00));
       expect(chunks[1].pairs.length, 6); // all jamo
+      expect(chunks[2].pairs.length, 1); // trailing toggle
+      expect(chunks[2].pairs[0], const KeycodePair(0x90, 0x00));
     });
 
     test('no toggle keys unchanged', () {

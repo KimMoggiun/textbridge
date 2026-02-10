@@ -99,6 +99,19 @@ class TransmissionService extends ChangeNotifier {
     });
 
     try {
+      // 0. Send delay configuration to firmware
+      if (_settings != null) {
+        await _ble.write(makeSetDelay(
+          pressDelay: _settings!.pressDelay,
+          releaseDelay: _settings!.releaseDelay,
+          comboDelay: _settings!.comboDelay,
+          togglePress: _settings!.togglePress,
+          toggleDelay: _settings!.toggleDelay,
+          warmupDelay: _settings!.warmupDelay,
+        ));
+        await _waitResponse(responseQueue, respAck, const Duration(seconds: 2));
+      }
+
       // 1. Send START
       await _ble.write(makeStart(0, chunks.length));
       final ready = await _waitResponse(responseQueue, respReady, const Duration(seconds: 5));
@@ -120,12 +133,21 @@ class TransmissionService extends ChangeNotifier {
         final chunk = chunks[i];
         var success = false;
 
+        // Dynamic ACK timeout: warmup (first chunk only) + injection time + buffer
+        final pressMs = _settings?.pressDelay ?? 5;
+        final releaseMs = _settings?.releaseDelay ?? 5;
+        final comboMs = _settings?.comboDelay ?? 2;
+        final warmupMs = (i == 0) ? (_settings?.warmupDelay ?? 50) : 0;
+        final ackTimeoutMs = warmupMs +
+            chunk.pairs.length * (pressMs + releaseMs + 2 * comboMs) +
+            500; // buffer for BLE round-trip
+
         for (var retry = 0; retry <= _maxRetries; retry++) {
           if (retry > 0) {
             await Future.delayed(const Duration(milliseconds: 100));
           }
           await _ble.write(chunk.toBytes());
-          final resp = await _waitResponse(responseQueue, respAck, const Duration(milliseconds: 500));
+          final resp = await _waitResponse(responseQueue, respAck, Duration(milliseconds: ackTimeoutMs));
 
           if (resp == null) {
             if (retry == _maxRetries) {
@@ -163,13 +185,6 @@ class TransmissionService extends ChangeNotifier {
           totalKeycodes: keycodes.length,
         );
         notifyListeners();
-
-        // Pacing delay: give firmware time to inject keycodes at the configured speed
-        final delayMs = _settings?.typingSpeed.delayMs ?? 5;
-        final pacingMs = chunk.pairs.length * delayMs;
-        if (pacingMs > 0) {
-          await Future.delayed(Duration(milliseconds: pacingMs));
-        }
       }
 
       // 3. Send DONE

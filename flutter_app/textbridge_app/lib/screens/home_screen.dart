@@ -183,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (_, tx, settings, child) {
                 if (!tx.isTransmitting) return const SizedBox.shrink();
                 final remaining = tx.progress.totalKeycodes - tx.progress.sentKeycodes;
-                final etaMs = remaining * settings.typingSpeed.delayMs;
+                final etaMs = remaining * (settings.pressDelay + settings.releaseDelay);
                 final etaSec = (etaMs / 1000).ceil();
                 return Column(
                   children: [

@@ -118,16 +118,14 @@ const KeycodePair _toggleMacOS = KeycodePair(0x2C, 0x01);   // Ctrl+Space
 /// Convert a text string to a list of HID keycode pairs.
 /// Handles ASCII, Hangul syllables, and automatic Han/Eng toggle insertion.
 /// [targetOS] determines the toggle key used for Han/Eng switching.
-/// [startInKorean] indicates the current OS IME state.
-/// Returns keycodes, skippedCount, and [endsInKorean] for state tracking.
-({List<KeycodePair> keycodes, int skippedCount, bool endsInKorean}) textToKeycodes(
+/// Always ends in English mode — trailing toggle added if text ends in Korean.
+({List<KeycodePair> keycodes, int skippedCount}) textToKeycodes(
   String text, {
   TargetOS targetOS = TargetOS.windows,
-  bool startInKorean = false,
 }) {
   final result = <KeycodePair>[];
   var skipped = 0;
-  var inKorean = startInKorean;
+  var inKorean = false;
   final togglePair = targetOS == TargetOS.macOS ? _toggleMacOS : _toggleWindows;
 
   for (final ch in text.split('')) {
@@ -155,7 +153,12 @@ const KeycodePair _toggleMacOS = KeycodePair(0x2C, 0x01);   // Ctrl+Space
     }
   }
 
-  return (keycodes: result, skippedCount: skipped, endsInKorean: inKorean);
+  // Always return to English mode
+  if (inKorean) {
+    result.add(togglePair);
+  }
+
+  return (keycodes: result, skippedCount: skipped);
 }
 
 /// Calculate chunk size from negotiated MTU.

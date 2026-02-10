@@ -3,28 +3,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum TargetOS { windows, macOS }
 
-enum TypingSpeed {
-  safe(10, 'Safe (10ms)'),
-  normal(5, 'Normal (5ms)'),
-  fast(1, 'Fast (1ms)');
-
-  final int delayMs;
-  final String label;
-  const TypingSpeed(this.delayMs, this.label);
-}
-
 class SettingsService extends ChangeNotifier {
   static const _keyTargetOS = 'targetOS';
-  static const _keyTypingSpeed = 'typingSpeed';
   static const _keyLastDeviceAddress = 'lastDeviceAddress';
+  static const _keyPressDelay = 'pressDelay';
+  static const _keyReleaseDelay = 'releaseDelay';
+  static const _keyComboDelay = 'comboDelay';
+  static const _keyTogglePress = 'togglePress';
+  static const _keyToggleDelay = 'toggleDelay';
+  static const _keyWarmupDelay = 'warmupDelay';
 
   TargetOS _targetOS = TargetOS.windows;
-  TypingSpeed _typingSpeed = TypingSpeed.normal;
   String? _lastDeviceAddress;
+  int _pressDelay = 5;
+  int _releaseDelay = 5;
+  int _comboDelay = 2;
+  int _togglePress = 20;
+  int _toggleDelay = 100;
+  int _warmupDelay = 50;
 
   TargetOS get targetOS => _targetOS;
-  TypingSpeed get typingSpeed => _typingSpeed;
   String? get lastDeviceAddress => _lastDeviceAddress;
+  int get pressDelay => _pressDelay;
+  int get releaseDelay => _releaseDelay;
+  int get comboDelay => _comboDelay;
+  int get togglePress => _togglePress;
+  int get toggleDelay => _toggleDelay;
+  int get warmupDelay => _warmupDelay;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -34,12 +39,13 @@ class SettingsService extends ChangeNotifier {
       _targetOS = TargetOS.values[osIndex];
     }
 
-    final speedIndex = prefs.getInt(_keyTypingSpeed);
-    if (speedIndex != null && speedIndex < TypingSpeed.values.length) {
-      _typingSpeed = TypingSpeed.values[speedIndex];
-    }
-
     _lastDeviceAddress = prefs.getString(_keyLastDeviceAddress);
+    _pressDelay = prefs.getInt(_keyPressDelay) ?? 5;
+    _releaseDelay = prefs.getInt(_keyReleaseDelay) ?? 5;
+    _comboDelay = prefs.getInt(_keyComboDelay) ?? 2;
+    _togglePress = prefs.getInt(_keyTogglePress) ?? 20;
+    _toggleDelay = prefs.getInt(_keyToggleDelay) ?? 100;
+    _warmupDelay = prefs.getInt(_keyWarmupDelay) ?? 50;
     notifyListeners();
   }
 
@@ -50,11 +56,46 @@ class SettingsService extends ChangeNotifier {
     await prefs.setInt(_keyTargetOS, os.index);
   }
 
-  Future<void> setTypingSpeed(TypingSpeed speed) async {
-    _typingSpeed = speed;
+  Future<void> setPressDelay(int ms) async {
+    _pressDelay = ms.clamp(1, 255);
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyTypingSpeed, speed.index);
+    await prefs.setInt(_keyPressDelay, _pressDelay);
+  }
+
+  Future<void> setReleaseDelay(int ms) async {
+    _releaseDelay = ms.clamp(1, 255);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyReleaseDelay, _releaseDelay);
+  }
+
+  Future<void> setComboDelay(int ms) async {
+    _comboDelay = ms.clamp(1, 255);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyComboDelay, _comboDelay);
+  }
+
+  Future<void> setTogglePress(int ms) async {
+    _togglePress = ms.clamp(1, 255);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyTogglePress, _togglePress);
+  }
+
+  Future<void> setToggleDelay(int ms) async {
+    _toggleDelay = ms.clamp(1, 255);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyToggleDelay, _toggleDelay);
+  }
+
+  Future<void> setWarmupDelay(int ms) async {
+    _warmupDelay = ms.clamp(1, 255);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyWarmupDelay, _warmupDelay);
   }
 
   Future<void> setLastDeviceAddress(String? address) async {

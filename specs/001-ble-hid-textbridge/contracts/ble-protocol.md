@@ -68,6 +68,23 @@ Byte 1: sequence number
 **Expected Response**: ACK (0x01)
 **Side Effect**: 펌웨어가 HID 리포트를 즉시 클리어
 
+### SET_DELAY (0x05)
+
+HID 주입 타이밍 파라미터 설정. 세션 외(IDLE 상태)에서 전송.
+
+```
+Byte 0: 0x05 (TB_CMD_SET_DELAY)
+Byte 1: press_delay (1~255 ms) — 키 누르는 시간 (press duration)
+Byte 2: release_delay (1~255 ms) — 키 간 딜레이 (release → next press)
+Byte 3: combo_delay (1~255 ms) — modifier 조합 내 딜레이 (modifier press → key press)
+Byte 4: toggle_press (1~255 ms) — IME 토글키 누르는 시간 (press duration)
+Byte 5: toggle_delay (1~255 ms) — IME 토글키 release 후 대기 시간
+Byte 6: warmup_delay (1~255 ms) — 청크 시작 전 USB 호스트 동기화 대기
+```
+
+**Expected Response**: ACK (0x01)
+**Default Values**: press_delay=5, release_delay=5, combo_delay=2, toggle_press=20, toggle_delay=100, warmup_delay=50
+
 ## RX Responses (Keyboard → Phone)
 
 ### ACK (0x01)
@@ -138,7 +155,7 @@ Phone                    Keyboard
 ### Toggle Key Flow (한영 전환)
 
 토글키(한영 전환)는 반드시 단독 청크(1개 키코드)로 분리하여 전송한다.
-키보드는 토글키 HID 주입 후 100ms 딜레이를 거친 뒤 ACK를 전송한다.
+키보드는 토글키 HID 주입 후 `toggle_delay` (기본 100ms, SET_DELAY로 변경 가능) 딜레이를 거친 뒤 ACK를 전송한다.
 앱은 ACK를 수신한 후에 다음 키코드 청크를 전송한다.
 
 ```

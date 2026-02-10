@@ -319,13 +319,44 @@ if (!tb_conn && conn) {
 
 **검증**: [ ] 수정 후 Dart 단위 테스트 통과, [ ] BLE E2E 테스트 통과
 
+### HF-004: Configurable HID Timing (CMD_SET_DELAY) (2026-02-10)
+
+**파일**: `zmk_keychron/app/src/textbridge.c`, `flutter_app/textbridge_app/lib/models/protocol.dart`, `flutter_app/textbridge_app/lib/services/settings_service.dart`
+
+**배경**: 기존 하드코딩된 `TB_HID_DELAY_MS`(5ms)와 `TB_TOGGLE_DELAY_MS`(100ms)를 런타임에서 조정 불가. 시스템/연결 품질에 따라 최적 타이밍이 다름.
+
+**설계**: 3-파라미터 타이밍 시스템:
+1. `key_delay` (1~255ms): 키 간 딜레이 (release → next press)
+2. `combo_delay` (1~255ms): modifier 조합 내 딜레이 (modifier press → key press)
+3. `toggle_delay` (1~255ms): IME 토글키 release 후 대기 시간
+
+**프로토콜**: `CMD_SET_DELAY (0x05)` — 4바이트 패킷 (cmd + 3 delay values)
+
+**수정 범위**:
+1. [x] `protocol.dart`: `cmdSetDelay = 0x05`, `makeSetDelay()` 함수 추가
+2. [x] `textbridge.c`: `TB_CMD_SET_DELAY 0x05` 정의 추가
+3. [x] `textbridge.c`: CMD_SET_DELAY 핸들러 구현 (3개 변수 업데이트)
+4. [x] `textbridge.c`: `tb_inject_work_handler()`에서 configurable delay 사용
+5. [x] `settings_service.dart`: 3개 타이밍 설정 추가 (영속화, TypingSpeed enum 제거)
+6. [x] `transmission_service.dart`: 세션 시작 전 SET_DELAY 전송
+7. [x] `settings_screen.dart`: _DelaySlider 위젯으로 3개 타이밍 슬라이더 UI
+8. [x] Dart 단위 테스트: settings_service_test, keycode_service_test 업데이트
+9. [x] Python E2E: SET_DELAY 전송 후 타이밍 변경 검증 (모든 테스트 통과)
+
+**추가 수정**:
+- `textbridge.c`: 전용 inject 워크큐 (`tb_inject_q`, 스택 1024B)
+- `textbridge.c`: warmup 50ms (idle 후 USB 호스트 폴링 재동기화)
+- `keycode_service.dart`: `textToKeycodes()`에서 trailing toggle 자동 추가, `startInKorean`/`endsInKorean` 제거
+
+**검증**: [x] 펌웨어 빌드 성공 (FLASH 25.10%, SRAM 33.90%), [x] Dart 테스트 통과, [x] BLE E2E 테스트 통과
+
 ---
 
 ## Verification Results (2026-02-08)
 
 ### 펌웨어 빌드
-- FLASH: 216,756 B / 844 KB (25.08%)
-- SRAM: 87,688 B / 256 KB (33.45%)
+- FLASH: 216,968 B / 844 KB (25.10%)
+- SRAM: 88,872 B / 256 KB (33.90%)
 
 ### BLE 프로토콜 테스트 (10/10 통과)
 
@@ -345,7 +376,7 @@ if (!tb_conn && conn) {
 ### Dart 단위 테스트 (60+ 통과)
 - `keycode_service_test.dart`: ASCII/한글 키코드 변환, 혼합 텍스트, emoji 처리
 - `hangul_service_test.dart`: 한글 음절 분해, 두벌식 매핑, 쌍자음/복합모음/겹받침
-- `settings_service_test.dart`: 설정 영속화 (TargetOS, TypingSpeed)
+- `settings_service_test.dart`: 설정 영속화 (TargetOS, keyDelay/comboDelay/toggleDelay)
 
 ### 실제 HID 출력 검증 — macOS (2026-02-08)
 

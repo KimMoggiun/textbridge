@@ -8,12 +8,17 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('defaults: targetOS=windows, typingSpeed=normal, lastDeviceAddress=null', () async {
+    test('defaults: targetOS=windows, delays=5/5/2/20/100/50, lastDeviceAddress=null', () async {
       final svc = SettingsService();
       await svc.load();
 
       expect(svc.targetOS, TargetOS.windows);
-      expect(svc.typingSpeed, TypingSpeed.normal);
+      expect(svc.pressDelay, 5);
+      expect(svc.releaseDelay, 5);
+      expect(svc.comboDelay, 2);
+      expect(svc.togglePress, 20);
+      expect(svc.toggleDelay, 100);
+      expect(svc.warmupDelay, 50);
       expect(svc.lastDeviceAddress, isNull);
     });
 
@@ -30,17 +35,99 @@ void main() {
       expect(svc2.targetOS, TargetOS.macOS);
     });
 
-    test('setTypingSpeed persists and reflects value', () async {
+    test('setPressDelay persists and reflects value', () async {
       final svc = SettingsService();
       await svc.load();
 
-      await svc.setTypingSpeed(TypingSpeed.fast);
-      expect(svc.typingSpeed, TypingSpeed.fast);
-      expect(svc.typingSpeed.delayMs, 1);
+      await svc.setPressDelay(10);
+      expect(svc.pressDelay, 10);
 
       final svc2 = SettingsService();
       await svc2.load();
-      expect(svc2.typingSpeed, TypingSpeed.fast);
+      expect(svc2.pressDelay, 10);
+    });
+
+    test('setReleaseDelay persists and reflects value', () async {
+      final svc = SettingsService();
+      await svc.load();
+
+      await svc.setReleaseDelay(8);
+      expect(svc.releaseDelay, 8);
+
+      final svc2 = SettingsService();
+      await svc2.load();
+      expect(svc2.releaseDelay, 8);
+    });
+
+    test('setComboDelay persists and reflects value', () async {
+      final svc = SettingsService();
+      await svc.load();
+
+      await svc.setComboDelay(5);
+      expect(svc.comboDelay, 5);
+
+      final svc2 = SettingsService();
+      await svc2.load();
+      expect(svc2.comboDelay, 5);
+    });
+
+    test('setTogglePress persists and reflects value', () async {
+      final svc = SettingsService();
+      await svc.load();
+
+      await svc.setTogglePress(15);
+      expect(svc.togglePress, 15);
+
+      final svc2 = SettingsService();
+      await svc2.load();
+      expect(svc2.togglePress, 15);
+    });
+
+    test('setToggleDelay persists and reflects value', () async {
+      final svc = SettingsService();
+      await svc.load();
+
+      await svc.setToggleDelay(200);
+      expect(svc.toggleDelay, 200);
+
+      final svc2 = SettingsService();
+      await svc2.load();
+      expect(svc2.toggleDelay, 200);
+    });
+
+    test('setWarmupDelay persists and reflects value', () async {
+      final svc = SettingsService();
+      await svc.load();
+
+      await svc.setWarmupDelay(30);
+      expect(svc.warmupDelay, 30);
+
+      final svc2 = SettingsService();
+      await svc2.load();
+      expect(svc2.warmupDelay, 30);
+    });
+
+    test('delay values are clamped to 1-255', () async {
+      final svc = SettingsService();
+      await svc.load();
+
+      await svc.setPressDelay(0);
+      expect(svc.pressDelay, 1);
+
+      await svc.setReleaseDelay(300);
+      expect(svc.releaseDelay, 255);
+
+      await svc.setComboDelay(300);
+      expect(svc.comboDelay, 255);
+
+      await svc.setTogglePress(-5);
+      expect(svc.togglePress, 1);
+
+      await svc.setToggleDelay(-5);
+      expect(svc.toggleDelay, 1);
+
+      await svc.setWarmupDelay(0);
+      expect(svc.warmupDelay, 1);
     });
 
     test('setLastDeviceAddress persists and reflects value', () async {
@@ -71,12 +158,6 @@ void main() {
       expect(svc2.lastDeviceAddress, isNull);
     });
 
-    test('TypingSpeed enum values are correct', () {
-      expect(TypingSpeed.safe.delayMs, 10);
-      expect(TypingSpeed.normal.delayMs, 5);
-      expect(TypingSpeed.fast.delayMs, 1);
-    });
-
     test('notifyListeners fires on changes', () async {
       final svc = SettingsService();
       await svc.load();
@@ -87,11 +168,26 @@ void main() {
       await svc.setTargetOS(TargetOS.macOS);
       expect(notified, 1);
 
-      await svc.setTypingSpeed(TypingSpeed.safe);
+      await svc.setPressDelay(10);
       expect(notified, 2);
 
-      await svc.setLastDeviceAddress('XX:XX');
+      await svc.setReleaseDelay(8);
       expect(notified, 3);
+
+      await svc.setComboDelay(5);
+      expect(notified, 4);
+
+      await svc.setTogglePress(15);
+      expect(notified, 5);
+
+      await svc.setToggleDelay(50);
+      expect(notified, 6);
+
+      await svc.setWarmupDelay(30);
+      expect(notified, 7);
+
+      await svc.setLastDeviceAddress('XX:XX');
+      expect(notified, 8);
     });
   });
 }

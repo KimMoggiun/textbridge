@@ -52,24 +52,55 @@ class SettingsScreen extends StatelessWidget {
           ),
           Consumer<SettingsService>(
             builder: (_, settings, child) => _Section(
-              title: 'Typing Speed',
+              title: 'Key Delays',
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: SegmentedButton<TypingSpeed>(
-                    segments: TypingSpeed.values
-                        .map((s) => ButtonSegment(value: s, label: Text(s.label)))
-                        .toList(),
-                    selected: {settings.typingSpeed},
-                    onSelectionChanged: (v) => settings.setTypingSpeed(v.first),
-                  ),
+                _DelaySlider(
+                  label: 'Press duration',
+                  description: 'How long each key is held down',
+                  value: settings.pressDelay,
+                  min: 1,
+                  max: 50,
+                  onChanged: (v) => settings.setPressDelay(v),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'Delay between keystrokes. Slower is safer for some applications.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
+                _DelaySlider(
+                  label: 'Release delay',
+                  description: 'Gap between keystrokes (release → next press)',
+                  value: settings.releaseDelay,
+                  min: 1,
+                  max: 50,
+                  onChanged: (v) => settings.setReleaseDelay(v),
+                ),
+                _DelaySlider(
+                  label: 'Combo delay',
+                  description: 'Within Shift/Ctrl combos (modifier → key)',
+                  value: settings.comboDelay,
+                  min: 1,
+                  max: 20,
+                  onChanged: (v) => settings.setComboDelay(v),
+                ),
+                _DelaySlider(
+                  label: 'Toggle press',
+                  description: 'Han/Eng toggle key press duration',
+                  value: settings.togglePress,
+                  min: 5,
+                  max: 50,
+                  onChanged: (v) => settings.setTogglePress(v),
+                ),
+                _DelaySlider(
+                  label: 'Toggle delay',
+                  description: 'Wait after Han/Eng toggle for IME switch',
+                  value: settings.toggleDelay,
+                  min: 10,
+                  max: 255,
+                  onChanged: (v) => settings.setToggleDelay(v),
+                ),
+                _DelaySlider(
+                  label: 'Warmup delay',
+                  description: 'USB host sync before each chunk',
+                  value: settings.warmupDelay,
+                  min: 1,
+                  max: 100,
+                  onChanged: (v) => settings.setWarmupDelay(v),
                 ),
               ],
             ),
@@ -138,6 +169,42 @@ class _Section extends StatelessWidget {
         ...children,
         const Divider(),
       ],
+    );
+  }
+}
+
+class _DelaySlider extends StatelessWidget {
+  final String label;
+  final String description;
+  final int value;
+  final int min;
+  final int max;
+  final ValueChanged<int> onChanged;
+
+  const _DelaySlider({
+    required this.label,
+    required this.description,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: Text('$label: ${value}ms'),
+      subtitle: Text(description),
+      trailing: SizedBox(
+        width: 160,
+        child: Slider(
+          value: value.toDouble(),
+          min: min.toDouble(),
+          max: max.toDouble(),
+          divisions: max - min,
+          onChanged: (v) => onChanged(v.round()),
+        ),
+      ),
     );
   }
 }

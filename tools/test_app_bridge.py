@@ -34,10 +34,10 @@ except ImportError:
 from test_phase3_protocol import (
     TB_SVC_UUID, TB_TX_UUID, TB_RX_UUID,
     RESP_ACK, RESP_NACK, RESP_READY, RESP_DONE, RESP_ERROR, RESP_NAMES,
-    CMD_KEYCODE, CMD_START, CMD_DONE,
+    CMD_KEYCODE, CMD_START, CMD_DONE, CMD_SET_DELAY,
     TextBridgeClient,
     via_start_pairing, scan,
-    hangul_to_keycodes, make_keycode, make_start, make_done,
+    hangul_to_keycodes, make_keycode, make_start, make_done, make_set_delay,
     TOGGLE_WIN, TOGGLE_MAC, _toggle_key,
 )
 
@@ -93,11 +93,14 @@ def compare_keycodes(case_name: str, dart_data: dict) -> bool:
 
 
 async def send_dart_keycodes(tb: TextBridgeClient, case_name: str, dart_data: dict) -> bool:
-    """Dart 앱이 생성한 프로토콜 패킷을 그대로 BLE로 전송"""
+    """Dart 앱이 생성한 프로토콜 패킷을 그대로 BLE로 전송.
+    Dart textToKeycodes는 trailing toggle을 포함하지 않으므로,
+    ends_in_korean이면 DONE 후 별도 세션으로 toggle 키를 전송한다."""
     text = dart_data["text"]
     os_name = dart_data["os"]
     packets = dart_data["packets"]
     keycodes = dart_data["keycodes"]
+    ends_in_korean = dart_data.get("ends_in_korean", False)
 
     print(f"\n=== Bridge Test: {case_name} ===")
     print(f"  텍스트: '{text}' (OS={os_name})")
@@ -140,6 +143,18 @@ async def send_dart_keycodes(tb: TextBridgeClient, case_name: str, dart_data: di
             resp = await tb.wait_response(RESP_DONE)
             if not resp or resp[0] != RESP_DONE:
                 print(f"  [WARN] DONE 응답 미수신")
+
+    # Trailing toggle: Dart 앱은 endsInKorean 플래그로 별도 처리하지만,
+    # 순차 BLE 전송 시 IME를 영문으로 복귀시켜야 한다.
+    if ends_in_korean:
+        toggle = TOGGLE_MAC if os_name == "macOS" else TOGGLE_WIN
+        await tb.write(make_start(0, 1), "START (trailing toggle)")
+        resp = await tb.wait_response(RESP_READY)
+        if resp and resp[0] == RESP_READY:
+            await tb.write(make_keycode(1, [toggle]), "KEYCODE toggle")
+            await tb.wait_response(RESP_ACK, timeout=10.0)
+            await tb.write(make_done(2), "DONE (trailing toggle)")
+            await tb.wait_response(RESP_DONE)
 
     return True
 

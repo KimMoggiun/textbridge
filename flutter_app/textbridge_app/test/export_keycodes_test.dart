@@ -71,7 +71,7 @@ void main() {
         'os': os == TargetOS.macOS ? 'macOS' : 'Windows',
         'keycode_count': result.keycodes.length,
         'skipped_count': result.skippedCount,
-        'ends_in_korean': result.endsInKorean,
+        'ends_in_korean': false, // always ends in English (trailing toggle)
         'chunk_count': chunks.length,
         'chunk_size': chunkSize,
         'keycodes': keycodeList,

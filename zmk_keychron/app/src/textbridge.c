@@ -40,6 +40,7 @@ static struct bt_uuid_128 tb_rx_uuid   = BT_UUID_INIT_128(TB_UUID(0x12340002));
 #define TB_CMD_START    0x02
 #define TB_CMD_DONE     0x03
 #define TB_CMD_ABORT    0x04
+#define TB_CMD_SET_DELAY 0x05
 
 /* Responses: keyboard -> phone (RX Notify) */
 #define TB_RESP_ACK     0x01
@@ -53,9 +54,15 @@ static struct bt_uuid_128 tb_rx_uuid   = BT_UUID_INIT_128(TB_UUID(0x12340002));
 #define TB_ERR_SEQ      0x04
 
 #define TB_MAX_KEYCODES     32
-#define TB_HID_DELAY_MS     5
-#define TB_TOGGLE_DELAY_MS  100
 #define TB_SESSION_TIMEOUT_S 30
+
+/* Configurable delay defaults (ms) — overridable via CMD_SET_DELAY */
+#define TB_DEFAULT_PRESS_DELAY   5
+#define TB_DEFAULT_RELEASE_DELAY 5
+#define TB_DEFAULT_COMBO_DELAY   2
+#define TB_DEFAULT_TOGGLE_PRESS  20
+#define TB_DEFAULT_TOGGLE_DELAY  100
+#define TB_DEFAULT_WARMUP_DELAY  50
 
 /* ---------- State ---------- */
 static struct bt_conn *tb_conn;
@@ -75,6 +82,15 @@ static struct tb_keycode_item tb_kc_buf[TB_MAX_KEYCODES];
 static uint8_t tb_kc_count;
 static uint8_t tb_current_seq;
 static uint8_t tb_active_mods;
+static bool tb_needs_warmup;
+
+/* Configurable delays (ms) */
+static uint8_t tb_press_delay   = TB_DEFAULT_PRESS_DELAY;
+static uint8_t tb_release_delay = TB_DEFAULT_RELEASE_DELAY;
+static uint8_t tb_combo_delay   = TB_DEFAULT_COMBO_DELAY;
+static uint8_t tb_toggle_press  = TB_DEFAULT_TOGGLE_PRESS;
+static uint8_t tb_toggle_delay  = TB_DEFAULT_TOGGLE_DELAY;
+static uint8_t tb_warmup_delay  = TB_DEFAULT_WARMUP_DELAY;
 
 /* ---------- Forward declarations ---------- */
 static ssize_t tb_tx_write_cb(struct bt_conn *conn,
@@ -161,12 +177,28 @@ static void tb_cancel_session_timer(void)
     k_work_cancel_delayable(&tb_session_timeout_work);
 }
 
+/* ---------- Dedicated injection workqueue ---------- */
+/* Runs HID injection on its own thread to avoid blocking the system workqueue.
+ * System workqueue must remain free for BLE tx_complete_work and ZMK events;
+ * blocking it causes bt_gatt_notify deadlocks and k_msleep timing drift. */
+K_THREAD_STACK_DEFINE(tb_inject_stack, 1024);
+static struct k_work_q tb_inject_q;
+
 /* ---------- HID injection work ---------- */
 static void tb_inject_work_handler(struct k_work *work);
 K_WORK_DEFINE(tb_inject_work, tb_inject_work_handler);
 
 static void tb_inject_work_handler(struct k_work *work)
 {
+    /* Warmup: send current (empty) report to sync USB host polling.
+     * Only needed for the first chunk after START — subsequent chunks
+     * follow immediately after injection so USB is already active. */
+    if (tb_needs_warmup) {
+        zmk_endpoints_send_report(0x07);
+        k_msleep(tb_warmup_delay);
+        tb_needs_warmup = false;
+    }
+
     for (int i = 0; i < tb_kc_count; i++) {
         if (!tb_injecting) {
             break; /* ABORT received */
@@ -175,31 +207,33 @@ static void tb_inject_work_handler(struct k_work *work)
         uint8_t kc = tb_kc_buf[i].keycode;
         uint8_t mod = tb_kc_buf[i].modifier;
 
-        /* Register modifier + press key in same report (atomic)
-         * Avoids macOS interpreting lone Shift as CJK→English toggle */
+        bool is_toggle = (kc == 0x90) ||
+                         (kc == 0x2C && mod == 0x01);  /* LANG1 or Ctrl+Space */
+
+        /* Press modifier first, then key after combo_delay */
         if (mod) {
             zmk_hid_register_mods(mod);
             tb_active_mods = mod;
+            zmk_endpoints_send_report(0x07);
+            k_msleep(tb_combo_delay);
         }
         zmk_hid_keyboard_press(kc);
         zmk_endpoints_send_report(0x07);
-        k_msleep(TB_HID_DELAY_MS);
+        k_msleep(is_toggle ? tb_toggle_press : tb_press_delay);
 
-        /* Release key + modifier in same report */
+        /* Release: key first, then modifier (standard keyboard order).
+         * Modifier press → key press → key release → modifier release */
         zmk_hid_keyboard_release(kc);
+        zmk_endpoints_send_report(0x07);
         if (mod) {
+            k_msleep(tb_combo_delay);
             zmk_hid_unregister_mods(mod);
             tb_active_mods = 0;
+            zmk_endpoints_send_report(0x07);
         }
-        zmk_endpoints_send_report(0x07);
 
-        /* Extra delay after IME toggle keys */
-        if (kc == 0x90 || (kc >= 0xE0 && kc <= 0xE7) ||
-            (kc == 0x2C && mod == 0x01)) {  /* Ctrl+Space */
-            k_msleep(TB_TOGGLE_DELAY_MS);
-        } else {
-            k_msleep(TB_HID_DELAY_MS);
-        }
+        /* Delay after key: toggle_delay for IME keys, release_delay otherwise */
+        k_msleep(is_toggle ? tb_toggle_delay : tb_release_delay);
     }
 
     /* Send ACK if not aborted */
@@ -239,6 +273,7 @@ static ssize_t tb_tx_write_cb(struct bt_conn *conn,
         uint8_t seq = data[1];
         uint16_t total = (len >= 4) ? ((data[2] << 8) | data[3]) : 0;
         tb_transmitting = true;
+        tb_needs_warmup = true;
         tb_last_seq = 0xFF;
         tb_reset_session_timer();
         LOG_INF("TB START seq=%d total=%d", seq, total);
@@ -298,7 +333,7 @@ static ssize_t tb_tx_write_cb(struct bt_conn *conn,
         LOG_INF("TB KEYCODE seq=%d count=%d", seq, count);
         tb_reset_session_timer();
         tb_injecting = true;
-        k_work_submit(&tb_inject_work);
+        k_work_submit_to_queue(&tb_inject_q, &tb_inject_work);
         break;
     }
 
@@ -323,6 +358,23 @@ static ssize_t tb_tx_write_cb(struct bt_conn *conn,
         tb_cancel_session_timer();
         tb_cleanup_transmission();
         tb_send_response(TB_RESP_ACK, seq);
+        break;
+    }
+
+    case TB_CMD_SET_DELAY: {
+        if (len < 7) {
+            break;
+        }
+        tb_press_delay   = data[1] > 0 ? data[1] : TB_DEFAULT_PRESS_DELAY;
+        tb_release_delay = data[2] > 0 ? data[2] : TB_DEFAULT_RELEASE_DELAY;
+        tb_combo_delay   = data[3] > 0 ? data[3] : TB_DEFAULT_COMBO_DELAY;
+        tb_toggle_press  = data[4] > 0 ? data[4] : TB_DEFAULT_TOGGLE_PRESS;
+        tb_toggle_delay  = data[5] > 0 ? data[5] : TB_DEFAULT_TOGGLE_DELAY;
+        tb_warmup_delay  = data[6] > 0 ? data[6] : TB_DEFAULT_WARMUP_DELAY;
+        LOG_INF("TB SET_DELAY press=%d rel=%d combo=%d tgPress=%d tgDelay=%d warmup=%d",
+                tb_press_delay, tb_release_delay, tb_combo_delay,
+                tb_toggle_press, tb_toggle_delay, tb_warmup_delay);
+        tb_send_response(TB_RESP_ACK, 0);
         break;
     }
 
@@ -524,6 +576,9 @@ int zmk_textbridge_pair_start(void)
 /* ---------- Initialization ---------- */
 static int textbridge_init(const struct device *_arg)
 {
+    k_work_queue_start(&tb_inject_q, tb_inject_stack,
+                       K_THREAD_STACK_SIZEOF(tb_inject_stack),
+                       K_PRIO_PREEMPT(10), NULL);
     LOG_INF("TextBridge Phase 3 initialized");
     k_work_reschedule(&tb_bt_enable_work, K_MSEC(3000));
     return 0;
