@@ -96,7 +96,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 _DelaySlider(
                   label: 'Warmup delay',
-                  description: 'USB host sync before each chunk',
+                  description: 'USB host sync before first chunk only',
                   value: settings.warmupDelay,
                   min: 1,
                   max: 100,

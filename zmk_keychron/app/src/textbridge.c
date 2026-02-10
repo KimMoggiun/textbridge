@@ -59,7 +59,7 @@ static struct bt_uuid_128 tb_rx_uuid   = BT_UUID_INIT_128(TB_UUID(0x12340002));
 /* Configurable delay defaults (ms) — overridable via CMD_SET_DELAY */
 #define TB_DEFAULT_PRESS_DELAY   5
 #define TB_DEFAULT_RELEASE_DELAY 5
-#define TB_DEFAULT_COMBO_DELAY   2
+#define TB_DEFAULT_COMBO_DELAY   20
 #define TB_DEFAULT_TOGGLE_PRESS  20
 #define TB_DEFAULT_TOGGLE_DELAY  100
 #define TB_DEFAULT_WARMUP_DELAY  50
@@ -69,9 +69,9 @@ static struct bt_conn *tb_conn;
 static bool tb_notify_enabled;
 
 /* Protocol state */
-static bool tb_transmitting;
-static bool tb_injecting;
-static uint8_t tb_last_seq;
+static volatile bool tb_transmitting;
+static volatile bool tb_injecting;
+static volatile uint8_t tb_last_seq;
 
 struct tb_keycode_item {
     uint8_t keycode;
@@ -130,7 +130,10 @@ static void tb_send_response(uint8_t resp, uint8_t seq)
         return;
     }
     uint8_t data[2] = { resp, seq };
-    bt_gatt_notify(tb_conn, &tb_svc.attrs[4], data, sizeof(data));
+    int err = bt_gatt_notify(tb_conn, &tb_svc.attrs[4], data, sizeof(data));
+    if (err) {
+        LOG_WRN("TB notify failed resp=0x%02x (err %d)", resp, err);
+    }
 }
 
 static void tb_send_error(uint8_t seq, uint8_t err_code)
@@ -139,14 +142,27 @@ static void tb_send_error(uint8_t seq, uint8_t err_code)
         return;
     }
     uint8_t data[3] = { TB_RESP_ERROR, seq, err_code };
-    bt_gatt_notify(tb_conn, &tb_svc.attrs[4], data, sizeof(data));
+    int err = bt_gatt_notify(tb_conn, &tb_svc.attrs[4], data, sizeof(data));
+    if (err) {
+        LOG_WRN("TB notify error failed (err %d)", err);
+    }
 }
+
+/* ---------- HID injection work (forward declarations) ---------- */
+static void tb_inject_work_handler(struct k_work *work);
+K_WORK_DEFINE(tb_inject_work, tb_inject_work_handler);
 
 /* ---------- Transmission cleanup ---------- */
 static void tb_cleanup_transmission(void)
 {
-    tb_transmitting = false;
+    /* Signal inject worker to stop and wait for completion before
+     * touching HID state. Prevents interleaved zmk_hid calls between
+     * the BLE RX thread and inject workqueue causing stuck keys. */
     tb_injecting = false;
+    struct k_work_sync sync;
+    k_work_flush(&tb_inject_work, &sync);
+
+    tb_transmitting = false;
     if (tb_active_mods) {
         zmk_hid_unregister_mods(tb_active_mods);
         tb_active_mods = 0;
@@ -181,13 +197,10 @@ static void tb_cancel_session_timer(void)
 /* Runs HID injection on its own thread to avoid blocking the system workqueue.
  * System workqueue must remain free for BLE tx_complete_work and ZMK events;
  * blocking it causes bt_gatt_notify deadlocks and k_msleep timing drift. */
-K_THREAD_STACK_DEFINE(tb_inject_stack, 1024);
+K_THREAD_STACK_DEFINE(tb_inject_stack, 2048);
 static struct k_work_q tb_inject_q;
 
 /* ---------- HID injection work ---------- */
-static void tb_inject_work_handler(struct k_work *work);
-K_WORK_DEFINE(tb_inject_work, tb_inject_work_handler);
-
 static void tb_inject_work_handler(struct k_work *work)
 {
     /* Warmup: send current (empty) report to sync USB host polling.
@@ -210,29 +223,50 @@ static void tb_inject_work_handler(struct k_work *work)
         bool is_toggle = (kc == 0x90) ||
                          (kc == 0x2C && mod == 0x01);  /* LANG1 or Ctrl+Space */
 
-        /* Press modifier first, then key after combo_delay */
-        if (mod) {
+        if (mod && !is_toggle) {
+            /* Atomic modifier+key: press and release together in one report.
+             * Avoids lone-modifier report that macOS interprets as CJK toggle (HF-002).
+             * combo_delay is not needed — OS sees modifier+key simultaneously. */
+            zmk_hid_register_mods(mod);
+            tb_active_mods = mod;
+            zmk_hid_keyboard_press(kc);
+            zmk_endpoints_send_report(0x07);
+            k_msleep(tb_press_delay);
+
+            zmk_hid_keyboard_release(kc);
+            zmk_hid_unregister_mods(mod);
+            tb_active_mods = 0;
+            zmk_endpoints_send_report(0x07);
+        } else if (mod && is_toggle) {
+            /* Toggle with modifier (e.g., Ctrl+Space): separate reports.
+             * combo_delay gives OS time to recognize modifier before key. */
+            LOG_INF("TB toggle combo_delay=%d toggle_press=%d", tb_combo_delay, tb_toggle_press);
             zmk_hid_register_mods(mod);
             tb_active_mods = mod;
             zmk_endpoints_send_report(0x07);
             k_msleep(tb_combo_delay);
-        }
-        zmk_hid_keyboard_press(kc);
-        zmk_endpoints_send_report(0x07);
-        k_msleep(is_toggle ? tb_toggle_press : tb_press_delay);
 
-        /* Release: key first, then modifier (standard keyboard order).
-         * Modifier press → key press → key release → modifier release */
-        zmk_hid_keyboard_release(kc);
-        zmk_endpoints_send_report(0x07);
-        if (mod) {
+            zmk_hid_keyboard_press(kc);
+            zmk_endpoints_send_report(0x07);
+            k_msleep(tb_toggle_press);
+
+            zmk_hid_keyboard_release(kc);
+            zmk_endpoints_send_report(0x07);
             k_msleep(tb_combo_delay);
             zmk_hid_unregister_mods(mod);
             tb_active_mods = 0;
             zmk_endpoints_send_report(0x07);
+        } else {
+            /* Simple key or toggle without modifier (LANG1) */
+            zmk_hid_keyboard_press(kc);
+            zmk_endpoints_send_report(0x07);
+            k_msleep(is_toggle ? tb_toggle_press : tb_press_delay);
+
+            zmk_hid_keyboard_release(kc);
+            zmk_endpoints_send_report(0x07);
         }
 
-        /* Delay after key: toggle_delay for IME keys, release_delay otherwise */
+        /* Inter-key delay: toggle_delay for IME keys, release_delay otherwise */
         k_msleep(is_toggle ? tb_toggle_delay : tb_release_delay);
     }
 
@@ -255,6 +289,14 @@ static ssize_t tb_tx_write_cb(struct bt_conn *conn,
     if (!tb_conn && conn) {
         LOG_INF("TB: adopting conn from write callback");
         tb_conn = bt_conn_ref(conn);
+    }
+
+    /* macOS may cache CCC state across reconnects and skip re-enabling
+     * notifications, leaving tb_notify_enabled false.  If we're receiving
+     * GATT writes the client clearly expects responses, so force-enable. */
+    if (!tb_notify_enabled) {
+        tb_notify_enabled = true;
+        LOG_INF("TB: auto-enabled notify from write callback");
     }
 
     const uint8_t *data = buf;
@@ -342,8 +384,8 @@ static ssize_t tb_tx_write_cb(struct bt_conn *conn,
             break;
         }
         uint8_t seq = data[1];
-        tb_transmitting = false;
         tb_cancel_session_timer();
+        tb_cleanup_transmission();
         LOG_INF("TB DONE seq=%d", seq);
         tb_send_response(TB_RESP_DONE, seq);
         break;
@@ -363,6 +405,10 @@ static ssize_t tb_tx_write_cb(struct bt_conn *conn,
 
     case TB_CMD_SET_DELAY: {
         if (len < 7) {
+            break;
+        }
+        if (tb_transmitting) {
+            tb_send_response(TB_RESP_NACK, 0);
             break;
         }
         tb_press_delay   = data[1] > 0 ? data[1] : TB_DEFAULT_PRESS_DELAY;

@@ -642,7 +642,7 @@ async def main():
     async with BleakClient(devices[0].address) as client:
         tb = TextBridgeClient(client)
         await tb.connect()
-        await tb.set_delay(press_delay=5, release_delay=5, combo_delay=20, toggle_press=20, toggle_delay=100, warmup_delay=50)
+        await tb.set_delay(press_delay=5, release_delay=5, combo_delay=2, toggle_press=20, toggle_delay=100, warmup_delay=50)
         ok = await tb.send_text(args.text, append_enter=True)
         print("ok" if ok else "FAIL")
 

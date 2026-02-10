@@ -137,10 +137,17 @@ class TransmissionService extends ChangeNotifier {
         final pressMs = _settings?.pressDelay ?? 5;
         final releaseMs = _settings?.releaseDelay ?? 5;
         final comboMs = _settings?.comboDelay ?? 2;
+        final togglePressMs = _settings?.togglePress ?? 20;
+        final toggleDelayMs = _settings?.toggleDelay ?? 100;
         final warmupMs = (i == 0) ? (_settings?.warmupDelay ?? 50) : 0;
-        final ackTimeoutMs = warmupMs +
-            chunk.pairs.length * (pressMs + releaseMs + 2 * comboMs) +
-            500; // buffer for BLE round-trip
+        // Toggle chunks (1 pair) use toggle_press+toggle_delay instead of press+release
+        final isToggleChunk = chunk.pairs.length == 1 &&
+            (chunk.pairs[0] == const KeycodePair(0x90, 0x00) ||
+             chunk.pairs[0] == const KeycodePair(0x2C, 0x01));
+        final injectionMs = isToggleChunk
+            ? togglePressMs + toggleDelayMs + 2 * comboMs
+            : chunk.pairs.length * (pressMs + releaseMs + 2 * comboMs);
+        final ackTimeoutMs = warmupMs + injectionMs + 500; // buffer for BLE round-trip
 
         for (var retry = 0; retry <= _maxRetries; retry++) {
           if (retry > 0) {

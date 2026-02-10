@@ -79,7 +79,7 @@ Byte 2: release_delay (1~255 ms) — 키 간 딜레이 (release → next press)
 Byte 3: combo_delay (1~255 ms) — modifier 조합 내 딜레이 (modifier press → key press)
 Byte 4: toggle_press (1~255 ms) — IME 토글키 누르는 시간 (press duration)
 Byte 5: toggle_delay (1~255 ms) — IME 토글키 release 후 대기 시간
-Byte 6: warmup_delay (1~255 ms) — 청크 시작 전 USB 호스트 동기화 대기
+Byte 6: warmup_delay (1~255 ms) — 세션 첫 청크 시작 전 USB 호스트 동기화 대기 (이후 청크는 스킵)
 ```
 
 **Expected Response**: ACK (0x01)
