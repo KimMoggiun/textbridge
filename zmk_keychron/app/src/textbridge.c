@@ -612,10 +612,16 @@ int zmk_textbridge_pair_start(void)
     }
 
     if (tb_conn) {
-        LOG_INF("TextBridge already connected, ignoring");
-        return 0;
+        LOG_INF("TextBridge: disconnecting existing connection for re-pair");
+        tb_cancel_session_timer();
+        if (tb_transmitting || tb_injecting) {
+            tb_cleanup_transmission();
+        }
+        bt_conn_disconnect(tb_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        /* tb_disconnected callback will unref and set tb_conn = NULL */
     }
 
+    tb_stop_advertising();
     return tb_start_advertising();
 }
 
