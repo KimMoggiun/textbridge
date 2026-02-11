@@ -29,7 +29,7 @@ class TextBridgeApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'TextBridge',
+        title: '침하하',
         theme: ThemeData(
           colorSchemeSeed: Colors.blue,
           useMaterial3: true,

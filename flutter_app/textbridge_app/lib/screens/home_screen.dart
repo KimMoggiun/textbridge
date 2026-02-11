@@ -136,10 +136,26 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: IconButton(
-          icon: const Icon(Icons.delete_outline),
-          tooltip: '텍스트 지우기',
-          onPressed: () => _textController.clear(),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 24),
+              tooltip: '텍스트 지우기',
+              onPressed: () => _textController.clear(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.content_paste, size: 21),
+              tooltip: '클립보드에서 붙여넣기',
+              onPressed: () async {
+                final data = await Clipboard.getData(Clipboard.kTextPlain);
+                if (data?.text != null && data!.text!.isNotEmpty) {
+                  _textController.text = data.text!;
+                  _textController.selection = TextSelection.collapsed(offset: data.text!.length);
+                }
+              },
+            ),
+          ],
         ),
         actions: [
           Consumer<BleService>(

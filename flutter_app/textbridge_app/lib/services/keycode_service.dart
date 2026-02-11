@@ -145,6 +145,12 @@ bool _isLetterChar(String ch) {
         inKorean = true;
       }
       result.addAll(HangulService.syllableToKeycodes(cp));
+    } else if (HangulService.isHangulJamo(cp)) {
+      if (!inKorean) {
+        result.add(togglePair);
+        inKorean = true;
+      }
+      result.addAll(HangulService.jamoToKeycodes(cp));
     } else {
       final pair = _asciiToHid[ch];
       if (pair != null) {
@@ -210,8 +216,10 @@ List<KeycodeChunk> chunkKeycodes(List<KeycodePair> keycodes, int chunkSize) {
 int countMappedChars(String text) {
   var count = 0;
   for (final ch in text.split('')) {
+    final cp = ch.codeUnitAt(0);
     if (_asciiToHid.containsKey(ch) ||
-        HangulService.isHangulSyllable(ch.codeUnitAt(0))) {
+        HangulService.isHangulSyllable(cp) ||
+        HangulService.isHangulJamo(cp)) {
       count++;
     }
   }
@@ -219,6 +227,9 @@ int countMappedChars(String text) {
 }
 
 /// Check if a character has a valid HID mapping.
-bool hasMapping(String ch) =>
-    _asciiToHid.containsKey(ch) ||
-    HangulService.isHangulSyllable(ch.codeUnitAt(0));
+bool hasMapping(String ch) {
+  final cp = ch.codeUnitAt(0);
+  return _asciiToHid.containsKey(ch) ||
+      HangulService.isHangulSyllable(cp) ||
+      HangulService.isHangulJamo(cp);
+}

@@ -9,6 +9,72 @@ class HangulService {
   static bool isHangulSyllable(int codepoint) =>
       codepoint >= _syllableBase && codepoint <= _syllableEnd;
 
+  /// Hangul Compatibility Jamo (U+3131~U+3163): individual consonants/vowels.
+  static const int _jamoBase = 0x3131;
+  static const int _jamoEnd = 0x3163;
+
+  static bool isHangulJamo(int codepoint) =>
+      codepoint >= _jamoBase && codepoint <= _jamoEnd;
+
+  /// Convert a Compatibility Jamo codepoint to HID keycodes.
+  static List<KeycodePair> jamoToKeycodes(int codepoint) =>
+      _jamoTable[codepoint - _jamoBase];
+
+  // U+3131~U+3163 → Dubeolsik keycodes (reuses cho/jung/jong mappings)
+  static const _jamoTable = <List<KeycodePair>>[
+    [KeycodePair(0x15, 0x00)], // U+3131 ㄱ
+    [KeycodePair(0x15, 0x02)], // U+3132 ㄲ
+    [KeycodePair(0x15, 0x00), KeycodePair(0x17, 0x00)], // U+3133 ㄳ
+    [KeycodePair(0x16, 0x00)], // U+3134 ㄴ
+    [KeycodePair(0x16, 0x00), KeycodePair(0x1A, 0x00)], // U+3135 ㄵ
+    [KeycodePair(0x16, 0x00), KeycodePair(0x0A, 0x00)], // U+3136 ㄶ
+    [KeycodePair(0x08, 0x00)], // U+3137 ㄷ
+    [KeycodePair(0x08, 0x02)], // U+3138 ㄸ
+    [KeycodePair(0x09, 0x00)], // U+3139 ㄹ
+    [KeycodePair(0x09, 0x00), KeycodePair(0x15, 0x00)], // U+313A ㄺ
+    [KeycodePair(0x09, 0x00), KeycodePair(0x04, 0x00)], // U+313B ㄻ
+    [KeycodePair(0x09, 0x00), KeycodePair(0x14, 0x00)], // U+313C ㄼ
+    [KeycodePair(0x09, 0x00), KeycodePair(0x17, 0x00)], // U+313D ㄽ
+    [KeycodePair(0x09, 0x00), KeycodePair(0x1B, 0x00)], // U+313E ㄾ
+    [KeycodePair(0x09, 0x00), KeycodePair(0x19, 0x00)], // U+313F ㄿ
+    [KeycodePair(0x09, 0x00), KeycodePair(0x0A, 0x00)], // U+3140 ㅀ
+    [KeycodePair(0x04, 0x00)], // U+3141 ㅁ
+    [KeycodePair(0x14, 0x00)], // U+3142 ㅂ
+    [KeycodePair(0x14, 0x02)], // U+3143 ㅃ
+    [KeycodePair(0x14, 0x00), KeycodePair(0x17, 0x00)], // U+3144 ㅄ
+    [KeycodePair(0x17, 0x00)], // U+3145 ㅅ
+    [KeycodePair(0x17, 0x02)], // U+3146 ㅆ
+    [KeycodePair(0x07, 0x00)], // U+3147 ㅇ
+    [KeycodePair(0x1A, 0x00)], // U+3148 ㅈ
+    [KeycodePair(0x1A, 0x02)], // U+3149 ㅉ
+    [KeycodePair(0x06, 0x00)], // U+314A ㅊ
+    [KeycodePair(0x1D, 0x00)], // U+314B ㅋ
+    [KeycodePair(0x1B, 0x00)], // U+314C ㅌ
+    [KeycodePair(0x19, 0x00)], // U+314D ㅍ
+    [KeycodePair(0x0A, 0x00)], // U+314E ㅎ
+    [KeycodePair(0x0E, 0x00)], // U+314F ㅏ
+    [KeycodePair(0x12, 0x00)], // U+3150 ㅐ
+    [KeycodePair(0x0C, 0x00)], // U+3151 ㅑ
+    [KeycodePair(0x12, 0x02)], // U+3152 ㅒ
+    [KeycodePair(0x0D, 0x00)], // U+3153 ㅓ
+    [KeycodePair(0x13, 0x00)], // U+3154 ㅔ
+    [KeycodePair(0x18, 0x00)], // U+3155 ㅕ
+    [KeycodePair(0x13, 0x02)], // U+3156 ㅖ
+    [KeycodePair(0x0B, 0x00)], // U+3157 ㅗ
+    [KeycodePair(0x0B, 0x00), KeycodePair(0x0E, 0x00)], // U+3158 ㅘ
+    [KeycodePair(0x0B, 0x00), KeycodePair(0x12, 0x00)], // U+3159 ㅙ
+    [KeycodePair(0x0B, 0x00), KeycodePair(0x0F, 0x00)], // U+315A ㅚ
+    [KeycodePair(0x1C, 0x00)], // U+315B ㅛ
+    [KeycodePair(0x11, 0x00)], // U+315C ㅜ
+    [KeycodePair(0x11, 0x00), KeycodePair(0x0D, 0x00)], // U+315D ㅝ
+    [KeycodePair(0x11, 0x00), KeycodePair(0x13, 0x00)], // U+315E ㅞ
+    [KeycodePair(0x11, 0x00), KeycodePair(0x0F, 0x00)], // U+315F ㅟ
+    [KeycodePair(0x05, 0x00)], // U+3160 ㅠ
+    [KeycodePair(0x10, 0x00)], // U+3161 ㅡ
+    [KeycodePair(0x10, 0x00), KeycodePair(0x0F, 0x00)], // U+3162 ㅢ
+    [KeycodePair(0x0F, 0x00)], // U+3163 ㅣ
+  ];
+
   /// Decompose a Hangul syllable into (cho, jung, jong) indices.
   static ({int cho, int jung, int jong}) decompose(int codepoint) {
     final code = codepoint - _syllableBase;
