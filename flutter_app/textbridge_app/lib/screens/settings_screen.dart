@@ -12,22 +12,22 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const Text('설정')),
       body: ListView(
         children: [
           Consumer<BleService>(
             builder: (_, ble, child) => _Section(
-              title: 'Connection',
+              title: '연결',
               children: [
-                _InfoTile('Device', ble.deviceName.isEmpty ? '-' : ble.deviceName),
+                _InfoTile('기기', ble.deviceName.isEmpty ? '-' : ble.deviceName),
                 _InfoTile('MTU', '${ble.mtu}'),
-                _InfoTile('Chunk size', '${chunkSizeFromMtu(ble.mtu)} keycodes'),
+                _InfoTile('청크 크기', '${chunkSizeFromMtu(ble.mtu)} 키코드'),
               ],
             ),
           ),
           Consumer<SettingsService>(
             builder: (_, settings, child) => _Section(
-              title: 'Target OS',
+              title: '대상 OS',
               children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -43,7 +43,7 @@ class SettingsScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
-                    'Determines the Han/Eng toggle key sent to the PC.',
+                    'PC로 보낼 한/영 전환키를 결정합니다.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -52,51 +52,51 @@ class SettingsScreen extends StatelessWidget {
           ),
           Consumer<SettingsService>(
             builder: (_, settings, child) => _Section(
-              title: 'Key Delays',
+              title: '키 딜레이',
               children: [
                 _DelaySlider(
-                  label: 'Press duration',
-                  description: 'How long each key is held down',
+                  label: '키 누름',
+                  description: '각 키를 누르고 있는 시간',
                   value: settings.pressDelay,
                   min: 1,
                   max: 50,
                   onChanged: (v) => settings.setPressDelay(v),
                 ),
                 _DelaySlider(
-                  label: 'Release delay',
-                  description: 'Gap between keystrokes (release → next press)',
+                  label: '키 해제',
+                  description: '키 해제 후 다음 키까지 간격',
                   value: settings.releaseDelay,
                   min: 1,
                   max: 50,
                   onChanged: (v) => settings.setReleaseDelay(v),
                 ),
                 _DelaySlider(
-                  label: 'Combo delay',
-                  description: 'Within Shift/Ctrl combos (modifier → key)',
+                  label: '조합 딜레이',
+                  description: 'Shift/Ctrl 조합 내부 간격',
                   value: settings.comboDelay,
                   min: 1,
                   max: 20,
                   onChanged: (v) => settings.setComboDelay(v),
                 ),
                 _DelaySlider(
-                  label: 'Toggle press',
-                  description: 'Han/Eng toggle key press duration',
+                  label: '전환 누름',
+                  description: '한/영 전환키 누름 시간',
                   value: settings.togglePress,
                   min: 5,
                   max: 50,
                   onChanged: (v) => settings.setTogglePress(v),
                 ),
                 _DelaySlider(
-                  label: 'Toggle delay',
-                  description: 'Wait after Han/Eng toggle for IME switch',
+                  label: '전환 대기',
+                  description: '한/영 전환 후 IME 전환 대기',
                   value: settings.toggleDelay,
                   min: 10,
-                  max: 255,
+                  max: 500,
                   onChanged: (v) => settings.setToggleDelay(v),
                 ),
                 _DelaySlider(
-                  label: 'Warmup delay',
-                  description: 'USB host sync before first chunk only',
+                  label: '워밍업',
+                  description: '첫 청크 전 USB 호스트 동기화',
                   value: settings.warmupDelay,
                   min: 1,
                   max: 100,
@@ -107,10 +107,10 @@ class SettingsScreen extends StatelessWidget {
           ),
           Consumer<TransmissionService>(
             builder: (_, tx, child) => _Section(
-              title: 'Transmission',
+              title: '전송',
               children: [
                 ListTile(
-                  title: const Text('Max retries'),
+                  title: const Text('최대 재시도'),
                   subtitle: Text('${tx.maxRetries}'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -134,10 +134,10 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           _Section(
-            title: 'About',
+            title: '정보',
             children: const [
-              _InfoTile('Version', '1.0.0'),
-              _InfoTile('Protocol', 'TextBridge Phase 3'),
+              _InfoTile('버전', '1.0.0'),
+              _InfoTile('프로토콜', 'TextBridge Phase 3'),
             ],
           ),
         ],

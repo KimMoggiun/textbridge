@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
@@ -92,10 +93,15 @@ class TransmissionService extends ChangeNotifier {
     );
     notifyListeners();
 
-    // Set up response queue
-    final responseQueue = StreamController<Uint8List>();
+    // Set up response queue (list-based to avoid subscription gaps)
+    final responseQueue = Queue<Uint8List>();
+    Completer<void>? responseWaiter;
     _responseSub = _ble.responses.listen((data) {
+      debugPrint('[TB-Q] enqueue: ${data.map((b) => "0x${b.toRadixString(16)}").toList()}');
       responseQueue.add(data);
+      if (responseWaiter != null && !responseWaiter!.isCompleted) {
+        responseWaiter!.complete();
+      }
     });
 
     try {
@@ -109,12 +115,15 @@ class TransmissionService extends ChangeNotifier {
           toggleDelay: _settings!.toggleDelay,
           warmupDelay: _settings!.warmupDelay,
         ));
-        await _waitResponse(responseQueue, respAck, const Duration(seconds: 2));
+        final delayResp = await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, const Duration(seconds: 2));
+        debugPrint('[TB] SET_DELAY resp: ${delayResp != null ? delayResp.map((b) => "0x${b.toRadixString(16)}").toList() : "TIMEOUT"}');
       }
 
       // 1. Send START
+      debugPrint('[TB] Sending START, chunks=${chunks.length}');
       await _ble.write(makeStart(0, chunks.length));
-      final ready = await _waitResponse(responseQueue, respReady, const Duration(seconds: 5));
+      final ready = await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, const Duration(seconds: 5));
+      debugPrint('[TB] START resp: ${ready != null ? ready.map((b) => "0x${b.toRadixString(16)}").toList() : "TIMEOUT"}');
       if (ready == null || ready[0] != respReady) {
         _lastError = 'READY timeout';
         return false;
@@ -154,7 +163,7 @@ class TransmissionService extends ChangeNotifier {
             await Future.delayed(const Duration(milliseconds: 100));
           }
           await _ble.write(chunk.toBytes());
-          final resp = await _waitResponse(responseQueue, respAck, Duration(milliseconds: ackTimeoutMs));
+          final resp = await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, Duration(milliseconds: ackTimeoutMs));
 
           if (resp == null) {
             if (retry == _maxRetries) {
@@ -197,7 +206,7 @@ class TransmissionService extends ChangeNotifier {
       // 3. Send DONE
       final doneSeq = (chunks.length + 1) % 256;
       await _ble.write(makeDone(doneSeq));
-      await _waitResponse(responseQueue, respDone, const Duration(seconds: 5));
+      await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, const Duration(seconds: 5));
 
       return true;
     } catch (e) {
@@ -207,7 +216,6 @@ class TransmissionService extends ChangeNotifier {
       _isTransmitting = false;
       _responseSub?.cancel();
       _responseSub = null;
-      responseQueue.close();
       if (_ble.state == TbConnectionState.transmitting) {
         _ble.setState(TbConnectionState.connected);
       }
@@ -220,18 +228,34 @@ class TransmissionService extends ChangeNotifier {
     _abortRequested = true;
   }
 
-  Future<Uint8List?> _waitResponse(
-    StreamController<Uint8List> queue,
-    int expectedCode,
+  /// Dequeue next response from the list-based queue.
+  /// Uses a shared Completer that the BLE listener signals when data arrives.
+  Future<Uint8List?> _dequeue(
+    Queue<Uint8List> queue,
+    Completer<void>? Function() getWaiter,
+    void Function(Completer<void>?) setWaiter,
     Duration timeout,
   ) async {
-    try {
-      return await queue.stream.first.timeout(timeout);
-    } on TimeoutException {
-      return null;
-    } catch (_) {
-      return null;
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (queue.isNotEmpty) {
+        return queue.removeFirst();
+      }
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining.isNegative) break;
+      final waiter = Completer<void>();
+      setWaiter(waiter);
+      try {
+        await waiter.future.timeout(remaining);
+      } on TimeoutException {
+        break;
+      }
     }
+    // Check one more time after wakeup
+    if (queue.isNotEmpty) {
+      return queue.removeFirst();
+    }
+    return null;
   }
 
   @override

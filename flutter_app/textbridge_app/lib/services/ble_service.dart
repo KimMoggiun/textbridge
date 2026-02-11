@@ -148,6 +148,7 @@ class BleService extends ChangeNotifier {
       // Enable notifications on RX
       await _rxChar!.setNotifyValue(true);
       _notifySub = _rxChar!.onValueReceived.listen((value) {
+        debugPrint('[TB-BLE] RX notify: ${value.map((b) => "0x${b.toRadixString(16)}").toList()}');
         _responseController.add(Uint8List.fromList(value));
       });
 

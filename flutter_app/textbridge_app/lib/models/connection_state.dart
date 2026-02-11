@@ -11,15 +11,15 @@ extension TbConnectionStateExt on TbConnectionState {
   String get label {
     switch (this) {
       case TbConnectionState.disconnected:
-        return 'Disconnected';
+        return '연결 안됨';
       case TbConnectionState.scanning:
-        return 'Scanning...';
+        return '검색 중...';
       case TbConnectionState.connecting:
-        return 'Connecting...';
+        return '연결 중...';
       case TbConnectionState.connected:
-        return 'Connected';
+        return '연결됨';
       case TbConnectionState.transmitting:
-        return 'Transmitting...';
+        return '전송 중...';
     }
   }
 

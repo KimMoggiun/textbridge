@@ -94,7 +94,7 @@ class SettingsService extends ChangeNotifier {
   }
 
   Future<void> setToggleDelay(int ms) async {
-    _toggleDelay = ms.clamp(1, 255);
+    _toggleDelay = ms.clamp(1, 500);
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyToggleDelay, _toggleDelay);

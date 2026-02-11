@@ -75,17 +75,17 @@ class _HomeScreenState extends State<HomeScreen> {
         HapticFeedback.mediumImpact();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Sent successfully!'),
+            content: Text('전송 완료!'),
             backgroundColor: Colors.green,
           ),
         );
-        _textController.clear();
+        // keep text for re-send
       } else {
         HapticFeedback.heavyImpact();
         final failPos = tx.failedAtKeycode;
         final msg = failPos != null
-            ? 'Failed at keycode $failPos: ${tx.lastError}'
-            : 'Failed: ${tx.lastError}';
+            ? '키코드 $failPos에서 실패: ${tx.lastError}'
+            : '실패: ${tx.lastError}';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg), backgroundColor: Colors.red),
         );
@@ -106,11 +106,11 @@ class _HomeScreenState extends State<HomeScreen> {
       final disconnect = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('Connected: ${ble.deviceName}'),
-          content: const Text('Disconnect from this device?'),
+          title: Text('연결됨: ${ble.deviceName}'),
+          content: const Text('이 기기와 연결을 해제할까요?'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Disconnect')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('연결 해제')),
           ],
         ),
       );
@@ -136,7 +136,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('TextBridge'),
+        title: IconButton(
+          icon: const Icon(Icons.delete_outline),
+          tooltip: '텍스트 지우기',
+          onPressed: () => _textController.clear(),
+        ),
         actions: [
           Consumer<BleService>(
             builder: (_, ble, child) => GestureDetector(
@@ -167,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 keyboardType: TextInputType.multiline,
                 textAlignVertical: TextAlignVertical.top,
                 decoration: const InputDecoration(
-                  hintText: 'Type text here to send to keyboard...',
+                  hintText: '키보드로 보낼 텍스트를 입력하세요...',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -192,7 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text(
                       '${tx.progress.sentChunks}/${tx.progress.totalChunks} chunks  '
                       '(${tx.progress.sentKeycodes}/${tx.progress.totalKeycodes} keys)  '
-                      '~${etaSec}s remaining',
+                      '약 ${etaSec}초 남음',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 8),
@@ -206,20 +210,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (tx.isTransmitting) {
                   return FilledButton.tonal(
                     onPressed: _abort,
-                    child: const Text('Stop'),
+                    child: const Text('중지'),
                   );
                 }
                 if (!ble.state.isConnected) {
                   return FilledButton(
                     onPressed: _showConnectionSheet,
-                    child: const Text('Connect to Send'),
+                    child: const Text('연결하여 전송'),
                   );
                 }
                 return ListenableBuilder(
                   listenable: _textController,
                   builder: (context, _) => FilledButton(
                     onPressed: _textController.text.isEmpty ? null : _send,
-                    child: const Text('Send'),
+                    child: const Text('전송'),
                   ),
                 );
               },
@@ -256,7 +260,7 @@ class _ScanSheetState extends State<_ScanSheet> {
     try {
       final adapterState = await FlutterBluePlus.adapterState.first;
       if (adapterState != BluetoothAdapterState.on) {
-        if (mounted) setState(() => _error = 'Bluetooth is off.');
+        if (mounted) setState(() => _error = '블루투스가 꺼져 있습니다.');
         return;
       }
       if (Platform.isAndroid) {
@@ -267,14 +271,14 @@ class _ScanSheetState extends State<_ScanSheet> {
         ].request();
         if (!statuses.values.every((s) => s == PermissionStatus.granted)) {
           if (mounted) {
-            setState(() => _error = 'Bluetooth permissions required.');
+            setState(() => _error = '블루투스 권한이 필요합니다.');
             _showPermissionDenied = true;
           }
           return;
         }
       }
     } catch (e) {
-      if (mounted) setState(() => _error = 'Permission error: $e');
+      if (mounted) setState(() => _error = '권한 오류: $e');
       return;
     }
 
@@ -307,7 +311,7 @@ class _ScanSheetState extends State<_ScanSheet> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _error = 'Connection failed: $e');
+        setState(() => _error = '연결 실패: $e');
       }
     }
   }
@@ -327,7 +331,7 @@ class _ScanSheetState extends State<_ScanSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    _scanning ? 'Scanning...' : 'Select Device',
+                    _scanning ? '검색 중...' : '기기 선택',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -349,7 +353,7 @@ class _ScanSheetState extends State<_ScanSheet> {
                   if (_showPermissionDenied)
                     TextButton(
                       onPressed: () => openAppSettings(),
-                      child: const Text('Open Settings'),
+                      child: const Text('설정 열기'),
                     ),
                 ],
               ),
@@ -360,7 +364,7 @@ class _ScanSheetState extends State<_ScanSheet> {
               builder: (_, ble, child) {
                 final connecting = ble.state == TbConnectionState.connecting;
                 if (_results.isEmpty && !_scanning) {
-                  return const Center(child: Text('No devices found.'));
+                  return const Center(child: Text('기기를 찾을 수 없습니다.'));
                 }
                 return ListView.builder(
                   controller: scrollController,
@@ -370,7 +374,7 @@ class _ScanSheetState extends State<_ScanSheet> {
                     final name = r.advertisementData.advName;
                     return ListTile(
                       leading: const Icon(Icons.bluetooth, color: Colors.blue),
-                      title: Text(name.isEmpty ? 'Unknown' : name),
+                      title: Text(name.isEmpty ? '알 수 없는 기기' : name),
                       subtitle: Text('RSSI: ${r.rssi}'),
                       trailing: connecting
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
@@ -421,9 +425,9 @@ class _CharCount extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text('$total chars → $keycodeCount keycodes', style: style),
+        Text('$total자 → $keycodeCount 키코드', style: style),
         if (total != mapped)
-          Text('${total - mapped} skipped',
+          Text('${total - mapped}자 건너뜀',
               style: style?.copyWith(color: Colors.orange)),
       ],
     );
