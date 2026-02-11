@@ -291,7 +291,7 @@ if (!tb_conn && conn) {
 
 **수정**:
 1. **Atomic modifier+key**: modifier와 key를 같은 HID 리포트에 포함 (register_mods + keyboard_press + send_report)
-2. **Toggle delay 100ms**: Ctrl+Space 이후 macOS 입력기 전환 대기 (`TB_TOGGLE_DELAY_MS`)
+2. **Toggle delay**: Ctrl+Space 이후 입력기 전환 대기. 앱이 OS별 권장값(macOS=300ms, Windows=100ms)을 `CMD_SET_DELAY`로 전송. 펌웨어 `TB_DEFAULT_TOGGLE_DELAY=100`은 폴백용.
 3. **Ctrl+Space 감지**: `kc == 0x2C && mod == 0x01` 조건 추가
 
 **Python 테스트 도구 수정**:
@@ -323,7 +323,7 @@ if (!tb_conn && conn) {
 
 **파일**: `zmk_keychron/app/src/textbridge.c`, `flutter_app/textbridge_app/lib/models/protocol.dart`, `flutter_app/textbridge_app/lib/services/settings_service.dart`
 
-**배경**: 기존 하드코딩된 `TB_HID_DELAY_MS`(5ms)와 `TB_TOGGLE_DELAY_MS`(100ms)를 런타임에서 조정 불가. 시스템/연결 품질에 따라 최적 타이밍이 다름.
+**배경**: 기존 하드코딩된 `TB_HID_DELAY_MS`(5ms)와 `TB_TOGGLE_DELAY_MS`(100ms)를 런타임에서 조정 불가. OS별 최적 타이밍이 다름 (macOS=300ms, Windows=100ms).
 
 **설계**: 3-파라미터 타이밍 시스템:
 1. `key_delay` (1~255ms): 키 간 딜레이 (release → next press)

@@ -22,17 +22,34 @@ void main() {
       expect(svc.lastDeviceAddress, isNull);
     });
 
-    test('setTargetOS persists and reflects value', () async {
+    test('setTargetOS persists and updates toggleDelay to recommended value', () async {
       final svc = SettingsService();
       await svc.load();
+      expect(svc.toggleDelay, 100); // Windows default
 
       await svc.setTargetOS(TargetOS.macOS);
       expect(svc.targetOS, TargetOS.macOS);
+      expect(svc.toggleDelay, 300); // macOS recommended
+
+      await svc.setTargetOS(TargetOS.windows);
+      expect(svc.toggleDelay, 100); // Windows recommended
 
       // Reload from prefs
       final svc2 = SettingsService();
       await svc2.load();
-      expect(svc2.targetOS, TargetOS.macOS);
+      expect(svc2.targetOS, TargetOS.windows);
+      expect(svc2.toggleDelay, 100);
+    });
+
+    test('macOS default toggleDelay is 300ms', () async {
+      SharedPreferences.setMockInitialValues({
+        'targetOS': TargetOS.macOS.index,
+      });
+      final svc = SettingsService();
+      await svc.load();
+
+      expect(svc.targetOS, TargetOS.macOS);
+      expect(svc.toggleDelay, 300);
     });
 
     test('setPressDelay persists and reflects value', () async {

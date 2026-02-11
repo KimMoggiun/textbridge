@@ -13,13 +13,20 @@ class SettingsService extends ChangeNotifier {
   static const _keyToggleDelay = 'toggleDelay';
   static const _keyWarmupDelay = 'warmupDelay';
 
+  /// OS별 권장 한영전환 딜레이 (ms)
+  static const defaultToggleDelayWindows = 100;
+  static const defaultToggleDelayMacOS = 300;
+
+  static int recommendedToggleDelay(TargetOS os) =>
+      os == TargetOS.macOS ? defaultToggleDelayMacOS : defaultToggleDelayWindows;
+
   TargetOS _targetOS = TargetOS.windows;
   String? _lastDeviceAddress;
   int _pressDelay = 5;
   int _releaseDelay = 5;
   int _comboDelay = 2;
   int _togglePress = 20;
-  int _toggleDelay = 100;
+  int _toggleDelay = defaultToggleDelayWindows;
   int _warmupDelay = 50;
 
   TargetOS get targetOS => _targetOS;
@@ -44,16 +51,18 @@ class SettingsService extends ChangeNotifier {
     _releaseDelay = prefs.getInt(_keyReleaseDelay) ?? 5;
     _comboDelay = prefs.getInt(_keyComboDelay) ?? 2;
     _togglePress = prefs.getInt(_keyTogglePress) ?? 20;
-    _toggleDelay = prefs.getInt(_keyToggleDelay) ?? 100;
+    _toggleDelay = prefs.getInt(_keyToggleDelay) ?? recommendedToggleDelay(_targetOS);
     _warmupDelay = prefs.getInt(_keyWarmupDelay) ?? 50;
     notifyListeners();
   }
 
   Future<void> setTargetOS(TargetOS os) async {
     _targetOS = os;
+    _toggleDelay = recommendedToggleDelay(os);
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyTargetOS, os.index);
+    await prefs.setInt(_keyToggleDelay, _toggleDelay);
   }
 
   Future<void> setPressDelay(int ms) async {

@@ -13,7 +13,7 @@
 | 2 | `tb_release_delay` | 5ms | 키 뗌 후 다음 키까지 대기 | textbridge.c:236 |
 | 3 | `tb_combo_delay` | 2ms | 모디파이어 ↔ 키 사이 대기 (2회 사용) | textbridge.c:218, 229 |
 | 4 | `tb_toggle_press` | 20ms | 토글 키(Ctrl+Space) 누름 유지 시간 | textbridge.c:222 |
-| 5 | `tb_toggle_delay` | 100ms | 토글 후 IME 전환 완료 대기 | textbridge.c:236 |
+| 5 | `tb_toggle_delay` | 100ms (펌웨어 폴백. 앱 권장: macOS=300, Win=100) | 토글 후 IME 전환 완료 대기 | textbridge.c:236 |
 | 6 | `tb_warmup_delay` | 50ms | 세션 첫 청크만 USB 워밍업 | textbridge.c:198 |
 
 ### 딜레이 전달 경로

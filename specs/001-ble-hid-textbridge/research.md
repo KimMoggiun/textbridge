@@ -281,7 +281,7 @@ Different operating systems use different HID keycodes for toggling between Hang
 - **macOS:** Ctrl+Space (HID keycode 0x2C with Ctrl modifier 0x01)로 한영 전환. Right GUI (0xE7)는 OS-level 키 매핑이 HID 인젝션에 적용되지 않아 작동하지 않음 (2026-02-08 실제 하드웨어 테스트로 확인).
 - **Best Practice for TextBridge:** Implement OS detection and use the appropriate toggle key:
   - Windows/Linux: Send 0x90
-  - macOS: Send Ctrl+Space (0x2C, modifier 0x01). 전환 후 100ms 딜레이 필요 (TB_TOGGLE_DELAY_MS).
+  - macOS: Send Ctrl+Space (0x2C, modifier 0x01). 전환 후 300ms 딜레이 권장 (앱이 `CMD_SET_DELAY`로 전송, 펌웨어 폴백=100ms).
 
 ---
 

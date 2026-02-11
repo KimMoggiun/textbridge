@@ -100,7 +100,7 @@ IDLE ──START──→ READY ──KEYCODE──→ SENDING ──ACK──�
 | targetOS | enum | Windows | Windows / macOS |
 | keyDelay | int | 5 | 키 간 딜레이 ms (release → next press, 1~255) |
 | comboDelay | int | 2 | modifier 조합 내 딜레이 ms (modifier → key, 1~255) |
-| toggleDelay | int | 100 | IME 토글키 release 후 대기 ms (1~255) |
+| toggleDelay | int | OS별 (macOS=300, Windows=100) | IME 토글키 release 후 대기 ms (1~255). 앱이 OS별 권장값으로 초기화, `setTargetOS` 시 자동 업데이트. |
 | lastDeviceAddress | String? | null | 마지막 연결 기기 BLE 주소 |
 
 **Storage**: SharedPreferences (key-value)

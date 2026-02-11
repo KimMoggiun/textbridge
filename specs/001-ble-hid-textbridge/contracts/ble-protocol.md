@@ -83,7 +83,8 @@ Byte 6: warmup_delay (1~255 ms) — 세션 첫 청크 시작 전 USB 호스트 �
 ```
 
 **Expected Response**: ACK (0x01)
-**Default Values**: press_delay=5, release_delay=5, combo_delay=2, toggle_press=20, toggle_delay=100, warmup_delay=50
+**Firmware Fallback Values**: press_delay=5, release_delay=5, combo_delay=2, toggle_press=20, toggle_delay=100, warmup_delay=50
+**App Recommended toggle_delay**: macOS=300ms, Windows=100ms (앱이 OS별 권장값을 초기화하고 `CMD_SET_DELAY`로 전송)
 
 ## RX Responses (Keyboard → Phone)
 
@@ -155,7 +156,7 @@ Phone                    Keyboard
 ### Toggle Key Flow (한영 전환)
 
 토글키(한영 전환)는 반드시 단독 청크(1개 키코드)로 분리하여 전송한다.
-키보드는 토글키 HID 주입 후 `toggle_delay` (기본 100ms, SET_DELAY로 변경 가능) 딜레이를 거친 뒤 ACK를 전송한다.
+키보드는 토글키 HID 주입 후 `toggle_delay` (앱이 OS별 권장값 전송: macOS=300ms, Windows=100ms. 펌웨어 폴백=100ms) 딜레이를 거친 뒤 ACK를 전송한다.
 앱은 ACK를 수신한 후에 다음 키코드 청크를 전송한다.
 
 ```
