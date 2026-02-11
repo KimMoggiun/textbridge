@@ -350,7 +350,7 @@ async def test_special_chars(tb: TextBridgeClient):
 # Pre-computed keycode sequences for Korean text.
 # Toggle key: 0x90 (Windows LANG1), 0xE7 (macOS Right GUI)
 TOGGLE_WIN = (0x90, 0x00)
-TOGGLE_MAC = (0x2C, 0x01)  # Ctrl+Space — macOS input method toggle
+TOGGLE_MAC = (0x6D, 0x00)  # F18 — macOS input method toggle
 _toggle_key = TOGGLE_WIN  # default, changed by --os flag
 
 # Dubeolsik cho (initial consonant) keycodes
@@ -474,7 +474,9 @@ def hangul_to_keycodes(text: str) -> list[tuple[int, int]]:
             if jong > 0:
                 result.extend(_JONG[jong])
         elif ch in ASCII_TO_HID:
-            if in_korean:
+            # Only toggle for letter keys — space, digits, punctuation
+            # produce the same output in both Korean and English IME modes.
+            if in_korean and ch.isalpha():
                 result.append(_toggle_key)
                 in_korean = False
             result.append(ASCII_TO_HID[ch])

@@ -29,7 +29,7 @@ void main() {
 
       await svc.setTargetOS(TargetOS.macOS);
       expect(svc.targetOS, TargetOS.macOS);
-      expect(svc.toggleDelay, 300); // macOS recommended
+      expect(svc.toggleDelay, 100); // macOS recommended
 
       await svc.setTargetOS(TargetOS.windows);
       expect(svc.toggleDelay, 100); // Windows recommended
@@ -41,7 +41,7 @@ void main() {
       expect(svc2.toggleDelay, 100);
     });
 
-    test('macOS default toggleDelay is 300ms', () async {
+    test('macOS default toggleDelay is 100ms', () async {
       SharedPreferences.setMockInitialValues({
         'targetOS': TargetOS.macOS.index,
       });
@@ -49,7 +49,7 @@ void main() {
       await svc.load();
 
       expect(svc.targetOS, TargetOS.macOS);
-      expect(svc.toggleDelay, 300);
+      expect(svc.toggleDelay, 100);
     });
 
     test('setPressDelay persists and reflects value', () async {

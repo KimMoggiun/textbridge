@@ -139,14 +139,14 @@ void main() {
       expect(result.skippedCount, 0);
       // a
       expect(result.keycodes[0], const KeycodePair(0x04, 0x00));
-      // toggle to Korean (macOS: Ctrl+Space = 0x2C, mod=0x01)
-      expect(result.keycodes[1], const KeycodePair(0x2C, 0x01));
+      // toggle to Korean (macOS: F18 = 0x6D, no modifier)
+      expect(result.keycodes[1], const KeycodePair(0x6D, 0x00));
       // 한 keycodes
       expect(result.keycodes[2], const KeycodePair(0x0A, 0x00)); // ㅎ
       expect(result.keycodes[3], const KeycodePair(0x0E, 0x00)); // ㅏ
       expect(result.keycodes[4], const KeycodePair(0x16, 0x00)); // ㄴ
-      // toggle back to English (macOS: Ctrl+Space)
-      expect(result.keycodes[5], const KeycodePair(0x2C, 0x01));
+      // toggle back to English (macOS: F18)
+      expect(result.keycodes[5], const KeycodePair(0x6D, 0x00));
       // b
       expect(result.keycodes[6], const KeycodePair(0x05, 0x00));
     });
@@ -205,6 +205,38 @@ void main() {
       // toggle, ㅎ, ㅏ, ㄴ, toggle, a = 6 keycodes
       expect(result.keycodes.length, 6);
       expect(result.keycodes.last, const KeycodePair(0x04, 0x00)); // a
+    });
+
+    test('space between Korean words does NOT toggle', () {
+      // "안녕 하세요" → toggle + 안녕(6) + space + 하세요(9) + trailing toggle
+      // No toggle around space — space works the same in Korean IME
+      final result = textToKeycodes('\u{C548}\u{B155} \u{D558}\u{C138}\u{C694}');
+      // toggle(1) + 안(3) + 녕(3) + space(1) + 하(2) + 세(2) + 요(2) + trailing(1) = 15
+      expect(result.keycodes.length, 15);
+      // Only 2 toggles: start Korean + trailing
+      final toggleCount = result.keycodes.where((kp) => kp == const KeycodePair(0x90, 0x00)).length;
+      expect(toggleCount, 2);
+    });
+
+    test('digits between Korean do NOT toggle', () {
+      // "서울2024" → toggle + 서울(keycodes) + 2024 + trailing toggle
+      final result = textToKeycodes('\u{C11C}\u{C6B8}2024');
+      final toggleCount = result.keycodes.where((kp) => kp == const KeycodePair(0x90, 0x00)).length;
+      expect(toggleCount, 2); // start + trailing only
+    });
+
+    test('punctuation between Korean does NOT toggle', () {
+      // "안녕!" → toggle + 안녕(keycodes) + ! + trailing toggle
+      final result = textToKeycodes('\u{C548}\u{B155}!');
+      final toggleCount = result.keycodes.where((kp) => kp == const KeycodePair(0x90, 0x00)).length;
+      expect(toggleCount, 2); // start + trailing only
+    });
+
+    test('letter after Korean-space DOES toggle', () {
+      // "안녕 hello" → toggle + 안녕 + space + toggle + hello
+      final result = textToKeycodes('\u{C548}\u{B155} hello');
+      final toggleCount = result.keycodes.where((kp) => kp == const KeycodePair(0x90, 0x00)).length;
+      expect(toggleCount, 2); // start Korean + back to English for 'h'
     });
   });
 
@@ -266,8 +298,8 @@ void main() {
       final keycodes = textToKeycodes('a\u{D55C}b', targetOS: TargetOS.macOS).keycodes;
       final chunks = chunkKeycodes(keycodes, 8);
       expect(chunks.length, 5);
-      expect(chunks[1].pairs, [const KeycodePair(0x2C, 0x01)]); // Ctrl+Space
-      expect(chunks[3].pairs, [const KeycodePair(0x2C, 0x01)]); // Ctrl+Space
+      expect(chunks[1].pairs, [const KeycodePair(0x6D, 0x00)]); // F18
+      expect(chunks[3].pairs, [const KeycodePair(0x6D, 0x00)]); // F18
     });
 
     test('pure Hangul: toggle isolated at start and trailing toggle at end', () {

@@ -15,7 +15,7 @@ class SettingsService extends ChangeNotifier {
 
   /// OS별 권장 한영전환 딜레이 (ms)
   static const defaultToggleDelayWindows = 100;
-  static const defaultToggleDelayMacOS = 300;
+  static const defaultToggleDelayMacOS = 100;
 
   static int recommendedToggleDelay(TargetOS os) =>
       os == TargetOS.macOS ? defaultToggleDelayMacOS : defaultToggleDelayWindows;

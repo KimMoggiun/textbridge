@@ -112,7 +112,14 @@ const Map<String, KeycodePair> _asciiToHid = {
 
 /// Han/Eng toggle key by OS.
 const KeycodePair _toggleWindows = KeycodePair(0x90, 0x00); // LANG1
-const KeycodePair _toggleMacOS = KeycodePair(0x2C, 0x01);   // Ctrl+Space
+const KeycodePair _toggleMacOS = KeycodePair(0x6D, 0x00);   // F18
+
+/// Letters (a-z, A-Z) produce different output in Korean vs English IME.
+/// Space, digits, punctuation are the same in both modes — no toggle needed.
+bool _isLetterChar(String ch) {
+  final c = ch.codeUnitAt(0);
+  return (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A);
+}
 
 
 /// Convert a text string to a list of HID keycode pairs.
@@ -141,8 +148,9 @@ const KeycodePair _toggleMacOS = KeycodePair(0x2C, 0x01);   // Ctrl+Space
     } else {
       final pair = _asciiToHid[ch];
       if (pair != null) {
-        // Switch to English mode if needed
-        if (inKorean) {
+        // Only toggle for letter keys — space, digits, punctuation
+        // produce the same output in both Korean and English IME modes.
+        if (inKorean && _isLetterChar(ch)) {
           result.add(togglePair);
           inKorean = false;
         }

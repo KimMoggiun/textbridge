@@ -166,7 +166,7 @@ async def run_bridge_tests(address: str, case_names: list[str], dart_data: dict)
     async with BleakClient(address) as client:
         tb = TextBridgeClient(client)
         await tb.connect()
-        await tb.set_delay(press_delay=5, release_delay=5, combo_delay=2, toggle_press=20, toggle_delay=300, warmup_delay=50)
+        await tb.set_delay(press_delay=5, release_delay=5, combo_delay=2, toggle_press=20, toggle_delay=100, warmup_delay=50)
 
         results = {}
         for name in case_names:
