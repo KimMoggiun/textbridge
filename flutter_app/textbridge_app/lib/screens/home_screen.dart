@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../models/connection_state.dart';
 import '../services/ble_service.dart';
 import '../services/keycode_service.dart';
+import '../services/compression_service.dart';
 import '../services/settings_service.dart';
 import '../services/transmission_service.dart';
 import 'settings_screen.dart';
@@ -155,6 +156,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               },
             ),
+            Consumer<SettingsService>(
+              builder: (_, settings, __) =>
+                  settings.transmissionMode == TransmissionMode.compressed
+                      ? IconButton(
+                          icon: const Icon(Icons.code, size: 21),
+                          tooltip: 'H.java 디코더 삽입',
+                          onPressed: () {
+                            _textController.text = CompressionService.decoderJava;
+                            _textController.selection = TextSelection.collapsed(
+                                offset: CompressionService.decoderJava.length);
+                          },
+                        )
+                      : const SizedBox.shrink(),
+            ),
           ],
         ),
         actions: [
@@ -193,9 +208,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            ListenableBuilder(
-              listenable: _textController,
-              builder: (context, _) => _CharCount(text: _textController.text),
+            Consumer<SettingsService>(
+              builder: (_, settings, __) => ListenableBuilder(
+                listenable: _textController,
+                builder: (context, _) => _CharCount(
+                  text: _textController.text,
+                  mode: settings.transmissionMode,
+                ),
+              ),
             ),
             const SizedBox(height: 8),
             // Progress bar
@@ -203,7 +223,14 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (_, tx, settings, child) {
                 if (!tx.isTransmitting) return const SizedBox.shrink();
                 final remaining = tx.progress.totalKeycodes - tx.progress.sentKeycodes;
-                final etaMs = remaining * (settings.pressDelay + settings.releaseDelay);
+                final mode = settings.transmissionMode;
+                final pressMs = mode == TransmissionMode.compressed
+                    ? settings.compressedPressDelay
+                    : settings.pressDelay;
+                final releaseMs = mode == TransmissionMode.compressed
+                    ? settings.compressedReleaseDelay
+                    : settings.releaseDelay;
+                final etaMs = remaining * (pressMs + releaseMs);
                 final etaSec = (etaMs / 1000).ceil();
                 return Column(
                   children: [
@@ -220,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
-            // Send / Stop button
+            // Send / Stop button with mode toggle
             Consumer2<BleService, TransmissionService>(
               builder: (_, ble, tx, child) {
                 if (tx.isTransmitting) {
@@ -235,12 +262,49 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const Text('연결하여 전송'),
                   );
                 }
-                return ListenableBuilder(
-                  listenable: _textController,
-                  builder: (context, _) => FilledButton(
-                    onPressed: _textController.text.isEmpty ? null : _send,
-                    child: const Text('전송'),
-                  ),
+                return Row(
+                  children: [
+                    Consumer<SettingsService>(
+                      builder: (_, settings, __) => SegmentedButton<TransmissionMode>(
+                        segments: const [
+                          ButtonSegment(
+                            value: TransmissionMode.direct,
+                            label: Text('D', style: TextStyle(fontSize: 12)),
+                          ),
+                          ButtonSegment(
+                            value: TransmissionMode.compressed,
+                            label: Text('C', style: TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                        selected: {settings.transmissionMode},
+                        onSelectionChanged: (v) {
+                          settings.setTransmissionMode(v.first);
+                          if (v.first == TransmissionMode.compressed) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('PC가 영문 입력 모드인지 확인하세요'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                        style: const ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ListenableBuilder(
+                        listenable: _textController,
+                        builder: (context, _) => FilledButton(
+                          onPressed: _textController.text.isEmpty ? null : _send,
+                          child: const Text('전송'),
+                        ),
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -430,14 +494,31 @@ class _ConnectionBadge extends StatelessWidget {
 
 class _CharCount extends StatelessWidget {
   final String text;
-  const _CharCount({required this.text});
+  final TransmissionMode mode;
+  const _CharCount({required this.text, required this.mode});
 
   @override
   Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    if (text.isEmpty) {
+      return Text('0자', style: style);
+    }
+
+    if (mode == TransmissionMode.compressed) {
+      final info = CompressionService.compressionInfo(text);
+      final ratio = info.originalBytes > 0
+          ? ((1 - info.compressedBytes / info.originalBytes) * 100).round()
+          : 0;
+      final ratioStr = ratio > 0 ? ' (압축률 $ratio%)' : '';
+      return Text(
+        '${text.length}자 → ${info.compressedBytes}B → ${info.hexChars} hex$ratioStr',
+        style: style,
+      );
+    }
+
     final total = text.length;
     final mapped = countMappedChars(text);
-    final keycodeCount = text.isEmpty ? 0 : textToKeycodes(text).keycodes.length;
-    final style = Theme.of(context).textTheme.bodySmall;
+    final keycodeCount = textToKeycodes(text).keycodes.length;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
