@@ -105,6 +105,37 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
+          Consumer<SettingsService>(
+            builder: (_, settings, child) => _Section(
+              title: '압축 모드 딜레이',
+              children: [
+                _DelaySlider(
+                  label: '키 누름',
+                  description: 'hex 문자 press 타이밍',
+                  value: settings.compressedPressDelay,
+                  min: 1,
+                  max: 20,
+                  onChanged: (v) => settings.setCompressedPressDelay(v),
+                ),
+                _DelaySlider(
+                  label: '키 해제',
+                  description: 'hex 문자 release 타이밍',
+                  value: settings.compressedReleaseDelay,
+                  min: 1,
+                  max: 20,
+                  onChanged: (v) => settings.setCompressedReleaseDelay(v),
+                ),
+                _DelaySlider(
+                  label: '워밍업',
+                  description: '첫 청크 전 USB 호스트 동기화',
+                  value: settings.compressedWarmupDelay,
+                  min: 1,
+                  max: 100,
+                  onChanged: (v) => settings.setCompressedWarmupDelay(v),
+                ),
+              ],
+            ),
+          ),
           Consumer<TransmissionService>(
             builder: (_, tx, child) => _Section(
               title: '전송',
