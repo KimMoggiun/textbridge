@@ -26,6 +26,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:textbridge_app/services/compression_service.dart';
+import 'package:textbridge_app/services/keycode_service.dart';
 
 void main() {
   group('CompressionService', () {
@@ -84,7 +85,7 @@ void main() {
       final info = CompressionService.compressionInfo(text);
       expect(info.originalBytes, utf8.encode(text).length); // 15 bytes
       expect(info.compressedBytes, greaterThan(0));
-      expect(info.compressedBytes, lessThanOrEqualTo(info.originalBytes));
+      // Note: short text can EXPAND after zlib (header+checksum overhead)
       expect(info.hexChars, info.compressedBytes * 2);
     });
 
@@ -104,6 +105,70 @@ void main() {
     test('decoderJava is non-empty and contains H class', () {
       expect(CompressionService.decoderJava.contains('class H'), true);
       expect(CompressionService.decoderJava.contains('Inflater'), true);
+      expect(CompressionService.decoderJava.contains('Files.readAllBytes'), true);
+      expect(CompressionService.decoderJava.contains('output.txt'), true);
+      // Braces balanced
+      final open = CompressionService.decoderJava.split('{').length - 1;
+      final close = CompressionService.decoderJava.split('}').length - 1;
+      expect(open, close);
+    });
+
+    test('decoderJava every character is HID-typeable', () {
+      final result = textToKeycodes(CompressionService.decoderJava);
+      expect(result.skippedCount, 0,
+          reason: 'Some characters in H.java have no HID mapping');
+      expect(result.keycodes.isNotEmpty, true);
+    });
+
+    test('compressToHex never produces uppercase (no Shift needed)', () {
+      final inputs = ['hello', '안녕하세요', 'A' * 1000, '😀🇰🇷'];
+      for (final input in inputs) {
+        final hex = CompressionService.compressToHex(input);
+        expect(hex, matches(RegExp(r'^[0-9a-f]+$')),
+            reason: 'Input "$input" produced invalid hex');
+      }
+    });
+
+    test('hex output fed to textToKeycodes has no Shift or toggle keys', () {
+      final hex = CompressionService.compressToHex('안녕하세요 Hello World 😀');
+      final result = textToKeycodes(hex);
+      for (final kp in result.keycodes) {
+        expect(kp.modifier, 0x00,
+            reason: 'hex keycode 0x${kp.keycode.toRadixString(16)} has modifier');
+      }
+      expect(result.skippedCount, 0);
+    });
+
+    test('compressed pipeline produces fewer keycodes than direct for repetitive Korean', () {
+      final repeated = '안녕하세요 ' * 100;
+      final directResult = textToKeycodes(repeated);
+      final hex = CompressionService.compressToHex(repeated);
+      final compressedResult = textToKeycodes(hex);
+      expect(compressedResult.keycodes.length,
+          lessThan(directResult.keycodes.length));
+    });
+
+    test('compressToHex roundtrip with emoji', () {
+      const text = 'Hello 😀🇰🇷 안녕';
+      final hex = CompressionService.compressToHex(text);
+      final bytes = <int>[];
+      for (var i = 0; i < hex.length; i += 2) {
+        bytes.add(int.parse(hex.substring(i, i + 2), radix: 16));
+      }
+      final inflated = ZLibDecoder().convert(bytes);
+      expect(utf8.decode(inflated), text);
+    });
+
+    test('compressToHex handles large text (50KB+)', () {
+      final largeText = '안녕하세요 Hello World\n' * 4000;
+      final hex = CompressionService.compressToHex(largeText);
+      expect(hex, matches(RegExp(r'^[0-9a-f]+$')));
+      final bytes = <int>[];
+      for (var i = 0; i < hex.length; i += 2) {
+        bytes.add(int.parse(hex.substring(i, i + 2), radix: 16));
+      }
+      final inflated = ZLibDecoder().convert(bytes);
+      expect(utf8.decode(inflated), largeText);
     });
   });
 }
@@ -129,7 +194,7 @@ class CompressionService {
       'import java.io.*;\n'
       'import java.nio.file.*;\n'
       'class H{public static void main(String[] a)throws Exception{\n'
-      'String s=new String(Files.readAllBytes(Paths.get(a[0]))).trim();\n'
+      'String s=new String(Files.readAllBytes(Paths.get(a[0]))).replaceAll("[^0-9a-fA-F]","");\n'
       'byte[]b=new byte[s.length()/2];\n'
       'for(int i=0;i<b.length;i++)b[i]=(byte)Integer.parseInt(s.substring(i*2,i*2+2),16);\n'
       'Inflater i=new Inflater();i.setInput(b);\n'
@@ -168,7 +233,7 @@ class CompressionService {
 **Step 4: Run tests to verify they pass**
 
 Run: `cd /Users/evan/project/textbridge/flutter_app/textbridge_app && flutter test test/compression_service_test.dart`
-Expected: All 8 tests PASS
+Expected: All 15 tests PASS
 
 **Step 5: Commit**
 
@@ -355,7 +420,7 @@ enum TransmissionMode { direct, compressed }
 **Step 4: Run tests to verify they pass**
 
 Run: `cd /Users/evan/project/textbridge/flutter_app/textbridge_app && flutter test test/settings_service_test.dart`
-Expected: All tests PASS (existing 11 + new 7 = 18)
+Expected: All tests PASS (existing 13 + new 7 = 20)
 
 **Step 5: Commit**
 
@@ -515,8 +580,10 @@ class _CharCount extends StatelessWidget {
       final ratio = info.originalBytes > 0
           ? ((1 - info.compressedBytes / info.originalBytes) * 100).round()
           : 0;
+      // Short text can expand after zlib — show size only, no ratio
+      final ratioStr = ratio > 0 ? ' (압축률 $ratio%)' : '';
       return Text(
-        '${text.length}자 → ${info.compressedBytes}B → ${info.hexChars} hex → ${info.hexChars} 키코드 (압축률 $ratio%)',
+        '${text.length}자 → ${info.compressedBytes}B → ${info.hexChars} hex$ratioStr',
         style: style,
       );
     }
@@ -551,9 +618,45 @@ Update the `_CharCount` usage (around line 198) to pass mode:
             ),
 ```
 
-**Step 4: Add mode toggle next to send button**
+**Step 4: Fix ETA calculation for compressed mode**
 
-Replace the send/stop button section (lines 224-246) with mode toggle + button row:
+Update the progress bar section (lines 202-222) to use compressed delays when in compressed mode:
+
+```dart
+            Consumer2<TransmissionService, SettingsService>(
+              builder: (_, tx, settings, child) {
+                if (!tx.isTransmitting) return const SizedBox.shrink();
+                final remaining = tx.progress.totalKeycodes - tx.progress.sentKeycodes;
+                final mode = settings.transmissionMode;
+                final pressMs = mode == TransmissionMode.compressed
+                    ? settings.compressedPressDelay
+                    : settings.pressDelay;
+                final releaseMs = mode == TransmissionMode.compressed
+                    ? settings.compressedReleaseDelay
+                    : settings.releaseDelay;
+                final etaMs = remaining * (pressMs + releaseMs);
+                final etaSec = (etaMs / 1000).ceil();
+                return Column(
+                  children: [
+                    LinearProgressIndicator(value: tx.progress.fraction),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${tx.progress.sentChunks}/${tx.progress.totalChunks} chunks  '
+                      '(${tx.progress.sentKeycodes}/${tx.progress.totalKeycodes} keys)  '
+                      '약 ${etaSec}초 남음',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                );
+              },
+            ),
+```
+
+**Step 5: Add mode toggle next to send button**
+
+Replace the send/stop button section (lines 224-246) with mode toggle + button row.
+Note: When switching to Compressed mode, show a one-time SnackBar warning: "PC가 영문 입력 모드인지 확인하세요".
 
 ```dart
             Consumer2<BleService, TransmissionService>(
@@ -585,7 +688,17 @@ Replace the send/stop button section (lines 224-246) with mode toggle + button r
                           ),
                         ],
                         selected: {settings.transmissionMode},
-                        onSelectionChanged: (v) => settings.setTransmissionMode(v.first),
+                        onSelectionChanged: (v) {
+                          settings.setTransmissionMode(v.first);
+                          if (v.first == TransmissionMode.compressed) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('PC가 영문 입력 모드인지 확인하세요'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
                         style: ButtonStyle(
                           visualDensity: VisualDensity.compact,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -608,12 +721,12 @@ Replace the send/stop button section (lines 224-246) with mode toggle + button r
             ),
 ```
 
-**Step 5: Run app to verify UI renders**
+**Step 6: Run app to verify UI renders**
 
 Run: `cd /Users/evan/project/textbridge/flutter_app/textbridge_app && flutter test`
 Expected: All tests PASS (widget_test may need adjustment if it references _CharCount)
 
-**Step 6: Commit**
+**Step 7: Commit**
 
 ```bash
 cd /Users/evan/project/textbridge && git add flutter_app/textbridge_app/lib/screens/home_screen.dart && git commit -m "feat: add compressed mode UI (toggle, decoder button, compression stats)"
@@ -682,7 +795,7 @@ cd /Users/evan/project/textbridge && git add flutter_app/textbridge_app/lib/scre
 **Step 1: Run full Dart test suite**
 
 Run: `cd /Users/evan/project/textbridge/flutter_app/textbridge_app && flutter test`
-Expected: All tests PASS (77 existing + ~15 new ≈ 92)
+Expected: All tests PASS (77 existing + ~22 new ≈ 99)
 
 **Step 2: Verify test count**
 

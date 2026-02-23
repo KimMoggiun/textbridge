@@ -113,7 +113,7 @@ import java.util.zip.*;
 import java.io.*;
 import java.nio.file.*;
 class H{public static void main(String[] a)throws Exception{
-String s=new String(Files.readAllBytes(Paths.get(a[0]))).trim();
+String s=new String(Files.readAllBytes(Paths.get(a[0]))).replaceAll("[^0-9a-fA-F]","");
 byte[]b=new byte[s.length()/2];
 for(int i=0;i<b.length;i++)b[i]=(byte)Integer.parseInt(s.substring(i*2,i*2+2),16);
 Inflater i=new Inflater();i.setInput(b);
