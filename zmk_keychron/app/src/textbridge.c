@@ -474,7 +474,7 @@ static void tb_rx_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
 }
 
 /* ---------- Advertising ---------- */
-#define TB_DEVICE_NAME "B6 TextBridge"
+#define TB_DEVICE_NAME "TextBridge"
 #define TB_DEVICE_NAME_LEN (sizeof(TB_DEVICE_NAME) - 1)
 
 static const struct bt_data tb_ad[] = {
@@ -538,6 +538,15 @@ static void tb_connected(struct bt_conn *conn, uint8_t err)
     bt_conn_get_info(conn, &info);
 
     if (info.id != BT_ID_DEFAULT) {
+        return;
+    }
+
+    /* Reject TextBridge connections when not in USB mode.
+     * Phone may auto-reconnect to bonded identity 0 in BT mode. */
+    extern uint8_t get_current_transport(void);
+    if (get_current_transport() != ZMK_TRANSPORT_USB) {
+        LOG_INF("TextBridge rejecting conn in non-USB mode");
+        bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
         return;
     }
 

@@ -949,6 +949,18 @@ static void connected(struct bt_conn *conn, uint8_t err) {
         return;
     }
 
+    /* Identity 0 (TextBridge) is handled by textbridge.c — skip here. */
+    if (info.id == BT_ID_DEFAULT) {
+        return;
+    }
+
+    /* Reject ZMK profile auto-reconnect while in USB mode. */
+    if (get_current_transport() == ZMK_TRANSPORT_USB) {
+        LOG_INF("Rejecting ZMK profile conn in USB mode (id=%d)", info.id);
+        bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        return;
+    }
+
     advertising_status = ZMK_ADV_NONE;
     adv_state = advertising_status;
     k_work_cancel_delayable(&adv_timeout_work);
@@ -987,6 +999,17 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
         LOG_DBG("SKIPPING FOR ROLE %d", info.role);
         return;
     }
+
+    /* Identity 0 (TextBridge) is handled by textbridge.c — skip here. */
+    if (info.id == BT_ID_DEFAULT) {
+        return;
+    }
+
+    /* Ignore ZMK profile disconnects in USB mode (rejected by connected()). */
+    if (get_current_transport() == ZMK_TRANSPORT_USB) {
+        return;
+    }
+
     profiles[active_profile].connected=0;
     // We need to do this in a work callback, otherwise the advertising update will still see the
     // connection for a profile as active, and not start advertising yet.
@@ -1110,6 +1133,18 @@ static enum bt_security_err auth_pairing_accept(struct bt_conn *conn,
     bt_conn_get_info(conn, &info);
 
     LOG_DBG("role %d, open? %s", info.role, zmk_ble_active_profile_is_open() ? "yes" : "no");
+
+    /* Identity 0 (TextBridge) handles its own security — skip here. */
+    if (info.id == BT_ID_DEFAULT) {
+        return BT_SECURITY_ERR_SUCCESS;
+    }
+
+    /* Block ZMK profile pairing while in USB mode. */
+    if (get_current_transport() == ZMK_TRANSPORT_USB) {
+        LOG_WRN("Rejecting ZMK profile pairing in USB mode (id=%d)", info.id);
+        return BT_SECURITY_ERR_PAIR_NOT_ALLOWED;
+    }
+
     if (info.role == BT_CONN_ROLE_PERIPHERAL && !zmk_ble_active_profile_is_open()) {
         LOG_WRN("Rejecting pairing request to taken profile %d", active_profile);
         return BT_SECURITY_ERR_PAIR_NOT_ALLOWED;

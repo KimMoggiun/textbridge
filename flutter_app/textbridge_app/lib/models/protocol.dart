@@ -5,7 +5,7 @@
 const String tbServiceUuid = '12340000-1234-1234-1234-123456789abc';
 const String tbTxUuid = '12340001-1234-1234-1234-123456789abc';
 const String tbRxUuid = '12340002-1234-1234-1234-123456789abc';
-const String tbDeviceName = 'B6 TextBridge';
+const String tbDeviceName = 'TextBridge';
 
 // Commands (phone -> keyboard)
 const int cmdKeycode = 0x01;

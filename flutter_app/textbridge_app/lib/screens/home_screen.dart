@@ -74,22 +74,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       if (ok) {
         HapticFeedback.mediumImpact();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('전송 완료!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        // keep text for re-send
       } else {
         HapticFeedback.heavyImpact();
-        final failPos = tx.failedAtKeycode;
-        final msg = failPos != null
-            ? '키코드 $failPos에서 실패: ${tx.lastError}'
-            : '실패: ${tx.lastError}';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
-        );
       }
     }
   }
@@ -156,19 +142,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               },
             ),
-            Consumer<SettingsService>(
-              builder: (_, settings, __) =>
-                  settings.transmissionMode == TransmissionMode.compressed
-                      ? IconButton(
-                          icon: const Icon(Icons.code, size: 21),
-                          tooltip: 'H.java 디코더 삽입',
-                          onPressed: () {
-                            _textController.text = CompressionService.decoderJava;
-                            _textController.selection = TextSelection.collapsed(
-                                offset: CompressionService.decoderJava.length);
-                          },
-                        )
-                      : const SizedBox.shrink(),
+            IconButton(
+              icon: const Icon(Icons.code, size: 21),
+              tooltip: 'H.java 디코더 삽입',
+              onPressed: () {
+                _textController.text = CompressionService.decoderJava;
+                _textController.selection = TextSelection.collapsed(
+                    offset: CompressionService.decoderJava.length);
+              },
             ),
           ],
         ),
@@ -247,66 +228,55 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
-            // Send / Stop button with mode toggle
-            Consumer2<BleService, TransmissionService>(
-              builder: (_, ble, tx, child) {
-                if (tx.isTransmitting) {
-                  return FilledButton.tonal(
-                    onPressed: _abort,
-                    child: const Text('중지'),
-                  );
-                }
-                if (!ble.state.isConnected) {
-                  return FilledButton(
-                    onPressed: _showConnectionSheet,
-                    child: const Text('연결하여 전송'),
-                  );
-                }
-                return Row(
-                  children: [
-                    Consumer<SettingsService>(
-                      builder: (_, settings, __) => SegmentedButton<TransmissionMode>(
-                        segments: const [
-                          ButtonSegment(
-                            value: TransmissionMode.direct,
-                            label: Text('D', style: TextStyle(fontSize: 12)),
-                          ),
-                          ButtonSegment(
-                            value: TransmissionMode.compressed,
-                            label: Text('C', style: TextStyle(fontSize: 12)),
-                          ),
-                        ],
-                        selected: {settings.transmissionMode},
-                        onSelectionChanged: (v) {
-                          settings.setTransmissionMode(v.first);
-                          if (v.first == TransmissionMode.compressed) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('PC가 영문 입력 모드인지 확인하세요'),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        },
-                        style: const ButtonStyle(
-                          visualDensity: VisualDensity.compact,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            // Mode toggle + Send/Stop button
+            Row(
+              children: [
+                Consumer<SettingsService>(
+                  builder: (_, settings, __) {
+                    final isDirect = settings.transmissionMode == TransmissionMode.direct;
+                    return SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
+                        onPressed: () => settings.setTransmissionMode(
+                          isDirect ? TransmissionMode.compressed : TransmissionMode.direct,
+                        ),
+                        child: Text(isDirect ? 'D' : 'C', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ListenableBuilder(
+                    );
+                  },
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Consumer2<BleService, TransmissionService>(
+                    builder: (_, ble, tx, child) {
+                      if (tx.isTransmitting) {
+                        return FilledButton.tonal(
+                          onPressed: _abort,
+                          child: const Text('중지'),
+                        );
+                      }
+                      if (!ble.state.isConnected) {
+                        return FilledButton(
+                          onPressed: _showConnectionSheet,
+                          child: const Text('연결하여 전송'),
+                        );
+                      }
+                      return ListenableBuilder(
                         listenable: _textController,
                         builder: (context, _) => FilledButton(
                           onPressed: _textController.text.isEmpty ? null : _send,
                           child: const Text('전송'),
                         ),
-                      ),
-                    ),
-                  ],
-                );
-              },
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),
