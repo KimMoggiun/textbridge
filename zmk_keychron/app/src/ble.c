@@ -447,6 +447,11 @@ void checked_adv_stop(void) {
     return;
 }
 
+void zmk_ble_notify_adv_stopped(void) {
+    advertising_status = ZMK_ADV_NONE;
+    k_work_cancel_delayable(&adv_timeout_work);
+}
+
 void checked_dir_adv(void) {
     char addr_buf[BT_ADDR_LE_STR_LEN];
     bt_addr_le_t *addr = zmk_ble_active_profile_addr();
@@ -538,6 +543,7 @@ int update_advertising() {
         checked_dir_adv();
         break;
     case ZMK_ADV_DIR + CURR_ADV(ZMK_ADV_NONE):
+        bt_le_adv_stop();
         checked_dir_adv();
         break;
     case ZMK_ADV_CONN + CURR_ADV(ZMK_ADV_CONN):
@@ -551,6 +557,7 @@ int update_advertising() {
         break;
     case ZMK_ADV_CONN + CURR_ADV(ZMK_ADV_NONE):
         {
+            bt_le_adv_stop();
             checked_open_adv();
             k_timeout_t timeout = (adv_state== ZMK_ADV_PAIR) ? K_MSEC(ADV_PAIR_TIME_OUT):K_MSEC(ADV_RECONN_TIME_OUT);
             k_work_reschedule(&adv_timeout_work, timeout);
@@ -1005,12 +1012,16 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
         return;
     }
 
+    /* Always clear connected flag — bt_conn_disconnect() is async, so this
+     * callback fires after current_instance is already USB. Without clearing
+     * here, zmk_ble_listener sees stale connected=1 and skips re-advertising
+     * when switching back to BLE. */
+    profiles[active_profile].connected = 0;
+
     /* Ignore ZMK profile disconnects in USB mode (rejected by connected()). */
     if (get_current_transport() == ZMK_TRANSPORT_USB) {
         return;
     }
-
-    profiles[active_profile].connected=0;
     // We need to do this in a work callback, otherwise the advertising update will still see the
     // connection for a profile as active, and not start advertising yet.
     // k_work_submit(&update_advertising_work);

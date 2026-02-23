@@ -493,6 +493,12 @@ static int tb_start_advertising(void)
         return 0;
     }
 
+    /* 단일 광고 슬롯: ZMK 광고가 잔존할 수 있으므로 정리 후 시작.
+     * bt_le_adv_stop()은 idempotent (광고 없으면 no-op). */
+    bt_le_adv_stop();
+    extern void zmk_ble_notify_adv_stopped(void);
+    zmk_ble_notify_adv_stopped();
+
     struct bt_le_adv_param adv_param = *BT_LE_ADV_CONN;
     adv_param.id = BT_ID_DEFAULT;
     adv_param.options |= BT_LE_ADV_OPT_USE_IDENTITY;
