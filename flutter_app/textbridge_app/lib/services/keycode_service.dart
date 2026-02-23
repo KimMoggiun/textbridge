@@ -132,7 +132,7 @@ const Map<String, KeycodePair> _asciiToHid = {
 int chunkSizeFromMtu(int mtu) {
   final available = mtu - 3 - 3; // ATT header + protocol header
   final size = available ~/ 2;
-  return size.clamp(1, 127); // at least 1, max count fits in uint8
+  return size.clamp(1, 32); // at least 1, must not exceed firmware TB_MAX_KEYCODES
 }
 
 /// Split keycodes into chunks with sequence numbers.

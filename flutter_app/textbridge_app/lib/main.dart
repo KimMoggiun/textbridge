@@ -25,7 +25,7 @@ class TextBridgeApp extends StatelessWidget {
             ctx.read<BleService>(),
             ctx.read<SettingsService>(),
           ),
-          update: (_, ble, prev) => prev ?? TransmissionService(ble),
+          update: (ctx, ble, prev) => prev ?? TransmissionService(ble, ctx.read<SettingsService>()),
         ),
       ],
       child: MaterialApp(

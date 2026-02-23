@@ -7,7 +7,7 @@
 | Service UUID | `12340000-1234-1234-1234-123456789abc` |
 | TX Characteristic | `12340001-1234-1234-1234-123456789abc` (Write Without Response) |
 | RX Characteristic | `12340002-1234-1234-1234-123456789abc` (Notify) |
-| Advertising Name | `B6 TextBridge` |
+| Advertising Name | `TextBridge` |
 | BLE Identity | `BT_ID_DEFAULT` (0) |
 
 ## TX Commands (Phone → Keyboard)
@@ -77,14 +77,11 @@ Byte 0: 0x05 (TB_CMD_SET_DELAY)
 Byte 1: press_delay (1~255 ms) — 키 누르는 시간 (press duration)
 Byte 2: release_delay (1~255 ms) — 키 간 딜레이 (release → next press)
 Byte 3: combo_delay (1~255 ms) — modifier 조합 내 딜레이 (modifier press → key press)
-Byte 4: toggle_press (1~255 ms) — IME 토글키 누르는 시간 (press duration)
-Byte 5: toggle_delay (1~255 ms) — IME 토글키 release 후 대기 시간
-Byte 6: warmup_delay (1~255 ms) — 세션 첫 청크 시작 전 USB 호스트 동기화 대기 (이후 청크는 스킵)
+Byte 4: warmup_delay (1~255 ms) — 세션 첫 청크 시작 전 USB 호스트 동기화 대기 (이후 청크는 스킵)
 ```
 
 **Expected Response**: ACK (0x01)
-**Firmware Fallback Values**: press_delay=5, release_delay=5, combo_delay=2, toggle_press=20, toggle_delay=100, warmup_delay=50
-**App Recommended toggle_delay**: macOS=300ms, Windows=100ms (앱이 OS별 권장값을 초기화하고 `CMD_SET_DELAY`로 전송)
+**Firmware Fallback Values**: press_delay=1, release_delay=1, combo_delay=2, warmup_delay=50
 
 ## RX Responses (Keyboard → Phone)
 
@@ -153,41 +150,14 @@ Phone                    Keyboard
   │←── DONE (seq=3) ───────│
 ```
 
-### Toggle Key Flow (한영 전환)
+### Encoding Note
 
-토글키(한영 전환)는 반드시 단독 청크(1개 키코드)로 분리하여 전송한다.
-키보드는 토글키 HID 주입 후 `toggle_delay` (앱이 OS별 권장값 전송: macOS=300ms, Windows=100ms. 펌웨어 폴백=100ms) 딜레이를 거친 뒤 ACK를 전송한다.
-앱은 ACK를 수신한 후에 다음 키코드 청크를 전송한다.
+프로토콜은 인코딩에 무관하다. 키코드 페어의 내용은 앱이 결정한다.
 
-```
-Phone                    Keyboard
-  │                         │
-  │── START (seq=0) ───────→│
-  │←── READY (seq=0) ──────│
-  │                         │
-  │── KEYCODE (seq=1) ─────→│  ← "Hello " 영문 키코드 (6쌍)
-  │←── ACK (seq=1) ────────│
-  │                         │
-  │── KEYCODE (seq=2) ─────→│  ← 토글키 1개만 (Ctrl+Space 또는 LANG1)
-  │  (keyboard: HID inject   │
-  │   + 100ms delay + ACK)   │
-  │←── ACK (seq=2) ────────│  ← OS 입력기 전환 완료 보장
-  │                         │
-  │── KEYCODE (seq=3) ─────→│  ← "안녕" 한글 자모 키코드
-  │←── ACK (seq=3) ────────│
-  │                         │
-  │── KEYCODE (seq=4) ─────→│  ← 토글키 1개만 (영문 복귀)
-  │←── ACK (seq=4) ────────│
-  │                         │
-  │── KEYCODE (seq=5) ─────→│  ← " World" 영문 키코드
-  │←── ACK (seq=5) ────────│
-  │                         │
-  │── DONE (seq=6) ────────→│
-  │←── DONE (seq=6) ───────│
-```
+- **Direct mode**: 앱이 텍스트를 ASCII/Hangul HID 키코드로 직접 변환하여 전송
+- **Compressed mode**: 앱이 텍스트를 zlib 압축 후 hex 인코딩(0-9, a-f)하여 전송. hex 문자는 Shift 없이 키코드로 표현 가능하여 딜레이를 최소화할 수 있다
 
-**규칙**: 앱의 `textToKeycodes()`에서 토글키를 청크 경계로 강제 분리한다.
-토글키가 청크 중간에 있으면 해당 위치에서 청크를 분할한다.
+키보드 펌웨어는 수신된 키코드를 그대로 HID로 주입한다. 모드 구분 없음.
 
 ### Retry Flow (ACK Timeout)
 

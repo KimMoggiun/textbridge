@@ -38,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onBleStateChanged() {
+    if (!mounted) return;
     final ble = context.read<BleService>();
     if (ble.state == TbConnectionState.disconnected &&
         ble.disconnectedDuringTransmission) {
@@ -138,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
               tooltip: '클립보드에서 붙여넣기',
               onPressed: () async {
                 final data = await Clipboard.getData(Clipboard.kTextPlain);
+                if (!mounted) return;
                 if (data?.text != null && data!.text!.isNotEmpty) {
                   _textController.text = data.text!;
                   _textController.selection = TextSelection.collapsed(offset: data.text!.length);

@@ -111,8 +111,8 @@ void main() {
       expect(chunkSizeFromMtu(23), 8);
     });
 
-    test('MTU 247 gives chunk size 120', () {
-      expect(chunkSizeFromMtu(247), 120);
+    test('MTU 247 clamped to firmware max 32', () {
+      expect(chunkSizeFromMtu(247), 32);
     });
 
     test('minimum MTU gives at least 1', () {

@@ -125,6 +125,10 @@ class TransmissionService extends ChangeNotifier {
         ));
         final delayResp = await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, const Duration(seconds: 2));
         debugPrint('[TB] SET_DELAY resp: ${delayResp != null ? delayResp.map((b) => "0x${b.toRadixString(16)}").toList() : "TIMEOUT"}');
+        if (delayResp != null && delayResp.isNotEmpty && delayResp[0] == respError) {
+          _lastError = 'SET_DELAY rejected by keyboard';
+          return false;
+        }
       }
 
       // 1. Send START

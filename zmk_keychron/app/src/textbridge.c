@@ -120,37 +120,63 @@ BT_GATT_SERVICE_DEFINE(tb_svc,
 );
 
 /* ---------- Notify helpers ---------- */
+/* Take a local bt_conn reference to prevent use-after-free if
+ * tb_disconnected sets tb_conn=NULL between our check and notify call. */
 static void tb_send_response(uint8_t resp, uint8_t seq)
 {
-    if (!tb_conn || !tb_notify_enabled) {
+    struct bt_conn *conn = tb_conn;
+    if (!conn || !tb_notify_enabled) {
         return;
     }
+    bt_conn_ref(conn);
     uint8_t data[2] = { resp, seq };
-    int err = bt_gatt_notify(tb_conn, &tb_svc.attrs[4], data, sizeof(data));
+    int err = bt_gatt_notify(conn, &tb_svc.attrs[4], data, sizeof(data));
     if (err) {
         LOG_WRN("TB notify failed resp=0x%02x (err %d)", resp, err);
     }
+    bt_conn_unref(conn);
 }
 
 static void tb_send_error(uint8_t seq, uint8_t err_code)
 {
-    if (!tb_conn || !tb_notify_enabled) {
+    struct bt_conn *conn = tb_conn;
+    if (!conn || !tb_notify_enabled) {
         return;
     }
+    bt_conn_ref(conn);
     uint8_t data[3] = { TB_RESP_ERROR, seq, err_code };
-    int err = bt_gatt_notify(tb_conn, &tb_svc.attrs[4], data, sizeof(data));
+    int err = bt_gatt_notify(conn, &tb_svc.attrs[4], data, sizeof(data));
     if (err) {
         LOG_WRN("TB notify error failed (err %d)", err);
     }
+    bt_conn_unref(conn);
 }
+
+/* ---------- Dedicated injection workqueue ---------- */
+/* Runs HID injection on its own thread to avoid blocking the system workqueue.
+ * System workqueue must remain free for BLE tx_complete_work and ZMK events;
+ * blocking it causes bt_gatt_notify deadlocks and k_msleep timing drift. */
+K_THREAD_STACK_DEFINE(tb_inject_stack, 2048);
+static struct k_work_q tb_inject_q;
 
 /* ---------- HID injection work (forward declarations) ---------- */
 static void tb_inject_work_handler(struct k_work *work);
 K_WORK_DEFINE(tb_inject_work, tb_inject_work_handler);
 
 /* ---------- Transmission cleanup ---------- */
+/* Mutex guards cleanup from concurrent entry: session timeout (system wq),
+ * CMD_DONE/CMD_ABORT (BLE RX thread), disconnect callback, endpoint listener. */
+static struct k_mutex tb_cleanup_mutex;
+
 static void tb_cleanup_transmission(void)
 {
+    k_mutex_lock(&tb_cleanup_mutex, K_FOREVER);
+
+    if (!tb_transmitting && !tb_injecting) {
+        k_mutex_unlock(&tb_cleanup_mutex);
+        return;
+    }
+
     /* Signal inject worker to stop and wait for completion before
      * touching HID state. Prevents interleaved zmk_hid calls between
      * the BLE RX thread and inject workqueue causing stuck keys. */
@@ -165,6 +191,8 @@ static void tb_cleanup_transmission(void)
     }
     zmk_hid_keyboard_clear();
     zmk_endpoints_send_report(0x07);
+
+    k_mutex_unlock(&tb_cleanup_mutex);
 }
 
 /* ---------- Session timeout ---------- */
@@ -181,20 +209,16 @@ static void tb_session_timeout_handler(struct k_work *work)
 
 static void tb_reset_session_timer(void)
 {
-    k_work_reschedule(&tb_session_timeout_work, K_SECONDS(TB_SESSION_TIMEOUT_S));
+    /* Run timeout on the dedicated inject queue to avoid blocking the
+     * system workqueue when tb_cleanup_transmission calls k_work_flush. */
+    k_work_reschedule_for_queue(&tb_inject_q, &tb_session_timeout_work,
+                                K_SECONDS(TB_SESSION_TIMEOUT_S));
 }
 
 static void tb_cancel_session_timer(void)
 {
     k_work_cancel_delayable(&tb_session_timeout_work);
 }
-
-/* ---------- Dedicated injection workqueue ---------- */
-/* Runs HID injection on its own thread to avoid blocking the system workqueue.
- * System workqueue must remain free for BLE tx_complete_work and ZMK events;
- * blocking it causes bt_gatt_notify deadlocks and k_msleep timing drift. */
-K_THREAD_STACK_DEFINE(tb_inject_stack, 2048);
-static struct k_work_q tb_inject_q;
 
 /* ---------- HID injection work ---------- */
 static void tb_inject_work_handler(struct k_work *work)
@@ -218,12 +242,13 @@ static void tb_inject_work_handler(struct k_work *work)
 
         if (mod) {
             /* Atomic modifier+key: press and release together in one report.
-             * Avoids lone-modifier report that macOS interprets as CJK toggle. */
+             * Avoids lone-modifier report that macOS interprets as CJK toggle.
+             * Uses combo_delay instead of press_delay for modifier combinations. */
             zmk_hid_register_mods(mod);
             tb_active_mods = mod;
             zmk_hid_keyboard_press(kc);
             zmk_endpoints_send_report(0x07);
-            k_msleep(tb_press_delay);
+            k_msleep(tb_combo_delay);
 
             zmk_hid_keyboard_release(kc);
             zmk_hid_unregister_mods(mod);
@@ -611,6 +636,7 @@ int zmk_textbridge_pair_start(void)
 /* ---------- Initialization ---------- */
 static int textbridge_init(const struct device *_arg)
 {
+    k_mutex_init(&tb_cleanup_mutex);
     k_work_queue_start(&tb_inject_q, tb_inject_stack,
                        K_THREAD_STACK_SIZEOF(tb_inject_stack),
                        K_PRIO_PREEMPT(10), NULL);

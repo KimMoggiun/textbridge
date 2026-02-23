@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:textbridge_app/services/settings_service.dart';
+import 'package:textbridge_app/services/settings_service.dart' show TransmissionMode;
 
 void main() {
   group('SettingsService', () {
@@ -133,6 +134,41 @@ void main() {
 
       await svc.setLastDeviceAddress('XX:XX');
       expect(notified, 5);
+    });
+
+    test('default transmissionMode is compressed', () async {
+      final svc = SettingsService();
+      await svc.load();
+
+      expect(svc.transmissionMode, TransmissionMode.compressed);
+    });
+
+    test('setTransmissionMode changes value and notifies listeners', () async {
+      final svc = SettingsService();
+      await svc.load();
+
+      var notified = 0;
+      svc.addListener(() => notified++);
+
+      await svc.setTransmissionMode(TransmissionMode.direct);
+      expect(svc.transmissionMode, TransmissionMode.direct);
+      expect(notified, 1);
+
+      await svc.setTransmissionMode(TransmissionMode.compressed);
+      expect(svc.transmissionMode, TransmissionMode.compressed);
+      expect(notified, 2);
+    });
+
+    test('setTransmissionMode persists and round-trip works', () async {
+      final svc = SettingsService();
+      await svc.load();
+
+      await svc.setTransmissionMode(TransmissionMode.direct);
+      expect(svc.transmissionMode, TransmissionMode.direct);
+
+      final svc2 = SettingsService();
+      await svc2.load();
+      expect(svc2.transmissionMode, TransmissionMode.direct);
     });
   });
 }
