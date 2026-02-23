@@ -206,5 +206,70 @@ void main() {
       await svc.setLastDeviceAddress('XX:XX');
       expect(notified, 8);
     });
+
+    test('default transmissionMode is direct', () async {
+      final svc = SettingsService();
+      await svc.load();
+      expect(svc.transmissionMode, TransmissionMode.direct);
+    });
+
+    test('setTransmissionMode persists compressed', () async {
+      final svc = SettingsService();
+      await svc.load();
+      await svc.setTransmissionMode(TransmissionMode.compressed);
+      expect(svc.transmissionMode, TransmissionMode.compressed);
+      final svc2 = SettingsService();
+      await svc2.load();
+      expect(svc2.transmissionMode, TransmissionMode.compressed);
+    });
+
+    test('compressed delay defaults: press=1, release=1, warmup=50', () async {
+      final svc = SettingsService();
+      await svc.load();
+      expect(svc.compressedPressDelay, 1);
+      expect(svc.compressedReleaseDelay, 1);
+      expect(svc.compressedWarmupDelay, 50);
+    });
+
+    test('setCompressedPressDelay persists', () async {
+      final svc = SettingsService();
+      await svc.load();
+      await svc.setCompressedPressDelay(3);
+      expect(svc.compressedPressDelay, 3);
+      final svc2 = SettingsService();
+      await svc2.load();
+      expect(svc2.compressedPressDelay, 3);
+    });
+
+    test('setCompressedReleaseDelay persists', () async {
+      final svc = SettingsService();
+      await svc.load();
+      await svc.setCompressedReleaseDelay(5);
+      expect(svc.compressedReleaseDelay, 5);
+      final svc2 = SettingsService();
+      await svc2.load();
+      expect(svc2.compressedReleaseDelay, 5);
+    });
+
+    test('setCompressedWarmupDelay persists', () async {
+      final svc = SettingsService();
+      await svc.load();
+      await svc.setCompressedWarmupDelay(30);
+      expect(svc.compressedWarmupDelay, 30);
+      final svc2 = SettingsService();
+      await svc2.load();
+      expect(svc2.compressedWarmupDelay, 30);
+    });
+
+    test('compressed delays are clamped to 1-255', () async {
+      final svc = SettingsService();
+      await svc.load();
+      await svc.setCompressedPressDelay(0);
+      expect(svc.compressedPressDelay, 1);
+      await svc.setCompressedReleaseDelay(300);
+      expect(svc.compressedReleaseDelay, 255);
+      await svc.setCompressedWarmupDelay(-1);
+      expect(svc.compressedWarmupDelay, 1);
+    });
   });
 }

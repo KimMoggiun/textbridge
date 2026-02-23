@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum TargetOS { windows, macOS }
 
+enum TransmissionMode { direct, compressed }
+
 class SettingsService extends ChangeNotifier {
   static const _keyTargetOS = 'targetOS';
   static const _keyLastDeviceAddress = 'lastDeviceAddress';
@@ -12,6 +14,10 @@ class SettingsService extends ChangeNotifier {
   static const _keyTogglePress = 'togglePress';
   static const _keyToggleDelay = 'toggleDelay';
   static const _keyWarmupDelay = 'warmupDelay';
+  static const _keyTransmissionMode = 'transmissionMode';
+  static const _keyCompressedPressDelay = 'compressedPressDelay';
+  static const _keyCompressedReleaseDelay = 'compressedReleaseDelay';
+  static const _keyCompressedWarmupDelay = 'compressedWarmupDelay';
 
   /// OS별 권장 한영전환 딜레이 (ms)
   static const defaultToggleDelayWindows = 100;
@@ -28,6 +34,10 @@ class SettingsService extends ChangeNotifier {
   int _togglePress = 20;
   int _toggleDelay = defaultToggleDelayWindows;
   int _warmupDelay = 50;
+  TransmissionMode _transmissionMode = TransmissionMode.direct;
+  int _compressedPressDelay = 1;
+  int _compressedReleaseDelay = 1;
+  int _compressedWarmupDelay = 50;
 
   TargetOS get targetOS => _targetOS;
   String? get lastDeviceAddress => _lastDeviceAddress;
@@ -37,6 +47,10 @@ class SettingsService extends ChangeNotifier {
   int get togglePress => _togglePress;
   int get toggleDelay => _toggleDelay;
   int get warmupDelay => _warmupDelay;
+  TransmissionMode get transmissionMode => _transmissionMode;
+  int get compressedPressDelay => _compressedPressDelay;
+  int get compressedReleaseDelay => _compressedReleaseDelay;
+  int get compressedWarmupDelay => _compressedWarmupDelay;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -53,6 +67,13 @@ class SettingsService extends ChangeNotifier {
     _togglePress = prefs.getInt(_keyTogglePress) ?? 20;
     _toggleDelay = prefs.getInt(_keyToggleDelay) ?? recommendedToggleDelay(_targetOS);
     _warmupDelay = prefs.getInt(_keyWarmupDelay) ?? 50;
+    final modeIndex = prefs.getInt(_keyTransmissionMode);
+    if (modeIndex != null && modeIndex < TransmissionMode.values.length) {
+      _transmissionMode = TransmissionMode.values[modeIndex];
+    }
+    _compressedPressDelay = prefs.getInt(_keyCompressedPressDelay) ?? 1;
+    _compressedReleaseDelay = prefs.getInt(_keyCompressedReleaseDelay) ?? 1;
+    _compressedWarmupDelay = prefs.getInt(_keyCompressedWarmupDelay) ?? 50;
     notifyListeners();
   }
 
@@ -105,6 +126,34 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyWarmupDelay, _warmupDelay);
+  }
+
+  Future<void> setTransmissionMode(TransmissionMode mode) async {
+    _transmissionMode = mode;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyTransmissionMode, mode.index);
+  }
+
+  Future<void> setCompressedPressDelay(int ms) async {
+    _compressedPressDelay = ms.clamp(1, 255);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyCompressedPressDelay, _compressedPressDelay);
+  }
+
+  Future<void> setCompressedReleaseDelay(int ms) async {
+    _compressedReleaseDelay = ms.clamp(1, 255);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyCompressedReleaseDelay, _compressedReleaseDelay);
+  }
+
+  Future<void> setCompressedWarmupDelay(int ms) async {
+    _compressedWarmupDelay = ms.clamp(1, 255);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyCompressedWarmupDelay, _compressedWarmupDelay);
   }
 
   Future<void> setLastDeviceAddress(String? address) async {
