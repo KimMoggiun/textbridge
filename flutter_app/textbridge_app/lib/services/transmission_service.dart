@@ -7,6 +7,7 @@ import '../models/connection_state.dart';
 import '../models/protocol.dart';
 import '../services/ble_service.dart';
 import '../services/keycode_service.dart';
+import '../services/compression_service.dart';
 import '../services/settings_service.dart';
 
 /// Transmission progress callback data.
@@ -66,8 +67,17 @@ class TransmissionService extends ChangeNotifier {
     if (_isTransmitting) return false;
     if (!_ble.state.isConnected) return false;
 
+    // Convert text based on transmission mode
+    final mode = _settings?.transmissionMode ?? TransmissionMode.direct;
+    final String textToSend;
+    if (mode == TransmissionMode.compressed) {
+      textToSend = CompressionService.compressToHex(text);
+    } else {
+      textToSend = text;
+    }
+
     final result = textToKeycodes(
-      text,
+      textToSend,
       targetOS: _settings?.targetOS ?? TargetOS.windows,
     );
     final keycodes = result.keycodes;
@@ -107,13 +117,20 @@ class TransmissionService extends ChangeNotifier {
     try {
       // 0. Send delay configuration to firmware
       if (_settings != null) {
+        final mode = _settings!.transmissionMode;
         await _ble.write(makeSetDelay(
-          pressDelay: _settings!.pressDelay,
-          releaseDelay: _settings!.releaseDelay,
+          pressDelay: mode == TransmissionMode.compressed
+              ? _settings!.compressedPressDelay
+              : _settings!.pressDelay,
+          releaseDelay: mode == TransmissionMode.compressed
+              ? _settings!.compressedReleaseDelay
+              : _settings!.releaseDelay,
           comboDelay: _settings!.comboDelay,
           togglePress: _settings!.togglePress,
           toggleDelay: _settings!.toggleDelay,
-          warmupDelay: _settings!.warmupDelay,
+          warmupDelay: mode == TransmissionMode.compressed
+              ? _settings!.compressedWarmupDelay
+              : _settings!.warmupDelay,
         ));
         final delayResp = await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, const Duration(seconds: 2));
         debugPrint('[TB] SET_DELAY resp: ${delayResp != null ? delayResp.map((b) => "0x${b.toRadixString(16)}").toList() : "TIMEOUT"}');
@@ -143,12 +160,21 @@ class TransmissionService extends ChangeNotifier {
         var success = false;
 
         // Dynamic ACK timeout: warmup (first chunk only) + injection time + buffer
-        final pressMs = _settings?.pressDelay ?? 5;
-        final releaseMs = _settings?.releaseDelay ?? 5;
+        final mode = _settings?.transmissionMode ?? TransmissionMode.direct;
+        final pressMs = mode == TransmissionMode.compressed
+            ? (_settings?.compressedPressDelay ?? 1)
+            : (_settings?.pressDelay ?? 5);
+        final releaseMs = mode == TransmissionMode.compressed
+            ? (_settings?.compressedReleaseDelay ?? 1)
+            : (_settings?.releaseDelay ?? 5);
         final comboMs = _settings?.comboDelay ?? 2;
         final togglePressMs = _settings?.togglePress ?? 20;
         final toggleDelayMs = _settings?.toggleDelay ?? 100;
-        final warmupMs = (i == 0) ? (_settings?.warmupDelay ?? 50) : 0;
+        final warmupMs = (i == 0)
+            ? (mode == TransmissionMode.compressed
+                ? (_settings?.compressedWarmupDelay ?? 50)
+                : (_settings?.warmupDelay ?? 50))
+            : 0;
         // Toggle chunks (1 pair) use toggle_press+toggle_delay instead of press+release
         final isToggleChunk = chunk.pairs.length == 1 &&
             (chunk.pairs[0] == const KeycodePair(0x90, 0x00) ||
