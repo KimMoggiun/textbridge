@@ -109,13 +109,16 @@ void main() {
       expect(result.skippedCount, 0);
     });
 
-    test('compressed pipeline produces fewer keycodes than direct for repetitive Korean', () {
+    test('compressed pipeline produces keycodes for non-ASCII text via hex encoding', () {
       final repeated = '안녕하세요 ' * 100;
+      // Direct ASCII mapping skips Korean chars
       final directResult = textToKeycodes(repeated);
+      expect(directResult.skippedCount, greaterThan(0));
+      // Compression encodes all text as hex (ASCII-only)
       final hex = CompressionService.compressToHex(repeated);
       final compressedResult = textToKeycodes(hex);
-      expect(compressedResult.keycodes.length,
-          lessThan(directResult.keycodes.length));
+      expect(compressedResult.skippedCount, 0);
+      expect(compressedResult.keycodes.length, greaterThan(0));
     });
 
     test('compressToHex roundtrip with emoji', () {

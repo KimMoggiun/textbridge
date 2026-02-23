@@ -92,19 +92,15 @@ List<int> makeAbort(int seq) {
   return [cmdAbort, seq];
 }
 
-/// Build a SET_DELAY packet (7 bytes).
+/// Build a SET_DELAY packet (5 bytes).
 /// [pressDelay] ms key press duration, 1-255.
 /// [releaseDelay] ms between keys (release → next press), 1-255.
 /// [comboDelay] ms within modifier combos (modifier → key), 1-255.
-/// [togglePress] ms toggle key press duration, 1-255.
-/// [toggleDelay] ms after IME toggle key release, 1-255.
 /// [warmupDelay] ms USB host sync before each chunk, 1-255.
 List<int> makeSetDelay({
   required int pressDelay,
   required int releaseDelay,
   required int comboDelay,
-  required int togglePress,
-  required int toggleDelay,
   required int warmupDelay,
 }) {
   return [
@@ -112,8 +108,6 @@ List<int> makeSetDelay({
     pressDelay.clamp(1, 255),
     releaseDelay.clamp(1, 255),
     comboDelay.clamp(1, 255),
-    togglePress.clamp(1, 255),
-    toggleDelay.clamp(1, 255),
     warmupDelay.clamp(1, 255),
   ];
 }

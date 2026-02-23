@@ -28,7 +28,7 @@ class TransmissionProgress {
 }
 
 /// High-level text transmission with flow control.
-/// Handles START/KEYCODE/DONE sequence, ACK waiting, and retransmission.
+/// Always uses compression: text → zlib → hex → HID keycodes.
 class TransmissionService extends ChangeNotifier {
   final BleService _ble;
   SettingsService? _settings;
@@ -67,19 +67,14 @@ class TransmissionService extends ChangeNotifier {
     if (_isTransmitting) return false;
     if (!_ble.state.isConnected) return false;
 
-    // Convert text based on transmission mode
-    final mode = _settings?.transmissionMode ?? TransmissionMode.direct;
-    final String textToSend;
-    if (mode == TransmissionMode.compressed) {
-      textToSend = CompressionService.compressToHex(text);
-    } else {
-      textToSend = text;
-    }
+    // Direct mode: send ASCII keycodes directly
+    // Compressed mode: text → zlib → hex → keycodes
+    final mode = _settings?.transmissionMode ?? TransmissionMode.compressed;
+    final inputText = mode == TransmissionMode.compressed
+        ? CompressionService.compressToHex(text)
+        : text;
 
-    final result = textToKeycodes(
-      textToSend,
-      targetOS: _settings?.targetOS ?? TargetOS.windows,
-    );
+    final result = textToKeycodes(inputText);
     final keycodes = result.keycodes;
     if (keycodes.isEmpty) {
       _lastError = 'No mappable characters';
@@ -87,19 +82,10 @@ class TransmissionService extends ChangeNotifier {
       return false;
     }
 
-    // Compute effective delays based on mode (compressed uses faster timing)
-    final effectivePressDelay = mode == TransmissionMode.compressed
-        ? (_settings?.compressedPressDelay ?? 1)
-        : (_settings?.pressDelay ?? 5);
-    final effectiveReleaseDelay = mode == TransmissionMode.compressed
-        ? (_settings?.compressedReleaseDelay ?? 1)
-        : (_settings?.releaseDelay ?? 5);
-    final effectiveWarmupDelay = mode == TransmissionMode.compressed
-        ? (_settings?.compressedWarmupDelay ?? 50)
-        : (_settings?.warmupDelay ?? 50);
+    final pressMs = _settings?.pressDelay ?? 1;
+    final releaseMs = _settings?.releaseDelay ?? 1;
     final comboMs = _settings?.comboDelay ?? 2;
-    final togglePressMs = _settings?.togglePress ?? 20;
-    final toggleDelayMs = _settings?.toggleDelay ?? 100;
+    final warmupMs = _settings?.warmupDelay ?? 50;
 
     final chunkSize = chunkSizeFromMtu(_ble.mtu);
     final chunks = chunkKeycodes(keycodes, chunkSize);
@@ -132,12 +118,10 @@ class TransmissionService extends ChangeNotifier {
       // 0. Send delay configuration to firmware
       if (_settings != null) {
         await _ble.write(makeSetDelay(
-          pressDelay: effectivePressDelay,
-          releaseDelay: effectiveReleaseDelay,
-          comboDelay: _settings!.comboDelay,
-          togglePress: _settings!.togglePress,
-          toggleDelay: _settings!.toggleDelay,
-          warmupDelay: effectiveWarmupDelay,
+          pressDelay: pressMs,
+          releaseDelay: releaseMs,
+          comboDelay: comboMs,
+          warmupDelay: warmupMs,
         ));
         final delayResp = await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, const Duration(seconds: 2));
         debugPrint('[TB] SET_DELAY resp: ${delayResp != null ? delayResp.map((b) => "0x${b.toRadixString(16)}").toList() : "TIMEOUT"}');
@@ -167,15 +151,9 @@ class TransmissionService extends ChangeNotifier {
         var success = false;
 
         // Dynamic ACK timeout: warmup (first chunk only) + injection time + buffer
-        final warmupMs = (i == 0) ? effectiveWarmupDelay : 0;
-        // Toggle chunks (1 pair) use toggle_press+toggle_delay instead of press+release
-        final isToggleChunk = chunk.pairs.length == 1 &&
-            (chunk.pairs[0] == const KeycodePair(0x90, 0x00) ||
-             chunk.pairs[0] == const KeycodePair(0x2C, 0x01));
-        final injectionMs = isToggleChunk
-            ? togglePressMs + toggleDelayMs + 2 * comboMs
-            : chunk.pairs.length * (effectivePressDelay + effectiveReleaseDelay + 2 * comboMs);
-        final ackTimeoutMs = warmupMs + injectionMs + 500; // buffer for BLE round-trip
+        final chunkWarmupMs = (i == 0) ? warmupMs : 0;
+        final injectionMs = chunk.pairs.length * (pressMs + releaseMs + 2 * comboMs);
+        final ackTimeoutMs = chunkWarmupMs + injectionMs + 500; // buffer for BLE round-trip
 
         for (var retry = 0; retry <= _maxRetries; retry++) {
           if (retry > 0) {

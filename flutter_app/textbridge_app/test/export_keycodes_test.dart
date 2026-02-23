@@ -4,52 +4,40 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:textbridge_app/models/protocol.dart';
 import 'package:textbridge_app/services/keycode_service.dart';
-import 'package:textbridge_app/services/settings_service.dart';
 
 /// Dart 앱의 키코드 변환 결과를 JSON으로 익스포트.
 /// Python 브릿지 테스트(test_app_bridge.py)가 이 JSON을 읽어
 /// 실제 BLE 전송 → HID 주입을 검증한다.
 void main() {
   test('export keycodes to JSON for bridge test', () {
-    const testCases = <String, Map<String, dynamic>>{};
     final cases = <String, dynamic>{};
 
-    // 테스트 케이스 정의: {이름: {text, os}}
+    // 테스트 케이스 정의: ASCII only (compression mode handles non-ASCII)
     final inputs = [
-      ('ascii_hello', 'hello world', TargetOS.windows),
-      ('ascii_special', 'Hello, World! 123', TargetOS.windows),
-      ('ascii_code', 'print("test");', TargetOS.windows),
-      ('hangul_pure_win', '안녕하세요', TargetOS.windows),
-      ('hangul_mixed_win', 'Hello 안녕 World 세계', TargetOS.windows),
-      ('hangul_complex_win', '까닭없이', TargetOS.windows),
-      ('hangul_jamo_win', '자모 닭 까닭없이 값', TargetOS.windows),
-      ('hangul_pure_mac', '안녕하세요', TargetOS.macOS),
-      ('hangul_mixed_mac', 'Hello 안녕 World 세계', TargetOS.macOS),
-      ('hangul_complex_mac', '까닭없이', TargetOS.macOS),
-      ('code_with_korean', '// 주석입니다\nvar x = 1;', TargetOS.windows),
-      ('mixed_vars', '변수a = 값b', TargetOS.windows),
+      ('ascii_hello', 'hello world'),
+      ('ascii_special', 'Hello, World! 123'),
+      ('ascii_code', 'print("test");'),
+      ('hex_sample', '789c4bcacc4b07000336011b'),
     ];
 
-    for (final (name, text, os) in inputs) {
-      final result = textToKeycodes(text, targetOS: os);
-      final chunkSize = 8; // 기본 청크 사이즈 (테스트용)
+    for (final (name, text) in inputs) {
+      final result = textToKeycodes(text);
+      final chunkSize = 8;
       final chunks = chunkKeycodes(result.keycodes, chunkSize);
 
-      // 키코드 쌍 리스트
       final keycodeList = result.keycodes
           .map((kp) => [kp.keycode, kp.modifier])
           .toList();
 
-      // 프로토콜 바이트 (실제 BLE로 전송될 raw bytes)
       final protocolPackets = <Map<String, dynamic>>[];
 
-      // START 패킷
+      // START
       protocolPackets.add({
         'type': 'START',
         'bytes': makeStart(0, chunks.length),
       });
 
-      // KEYCODE 청크 패킷
+      // KEYCODE chunks
       for (final chunk in chunks) {
         protocolPackets.add({
           'type': 'KEYCODE',
@@ -59,7 +47,7 @@ void main() {
         });
       }
 
-      // DONE 패킷
+      // DONE
       final doneSeq = (chunks.length + 1) % 256;
       protocolPackets.add({
         'type': 'DONE',
@@ -68,10 +56,8 @@ void main() {
 
       cases[name] = {
         'text': text,
-        'os': os == TargetOS.macOS ? 'macOS' : 'Windows',
         'keycode_count': result.keycodes.length,
         'skipped_count': result.skippedCount,
-        'ends_in_korean': false, // always ends in English (trailing toggle)
         'chunk_count': chunks.length,
         'chunk_size': chunkSize,
         'keycodes': keycodeList,

@@ -60,7 +60,7 @@ def start_pairing():
         device.write(data)
         device.close()
 
-        print("Success! TextBridge should be advertising as 'B6 TextBridge'.")
+        print("Success! TextBridge should be advertising as 'TextBridge'.")
         return True
 
     except Exception as e:

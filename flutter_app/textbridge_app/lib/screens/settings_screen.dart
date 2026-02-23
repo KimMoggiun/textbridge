@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/ble_service.dart';
+import '../services/compression_service.dart';
 import '../services/keycode_service.dart';
 import '../services/settings_service.dart';
 import '../services/transmission_service.dart';
@@ -27,31 +28,6 @@ class SettingsScreen extends StatelessWidget {
           ),
           Consumer<SettingsService>(
             builder: (_, settings, child) => _Section(
-              title: '대상 OS',
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: SegmentedButton<TargetOS>(
-                    segments: const [
-                      ButtonSegment(value: TargetOS.windows, label: Text('Windows')),
-                      ButtonSegment(value: TargetOS.macOS, label: Text('macOS')),
-                    ],
-                    selected: {settings.targetOS},
-                    onSelectionChanged: (v) => settings.setTargetOS(v.first),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'PC로 보낼 한/영 전환키를 결정합니다.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Consumer<SettingsService>(
-            builder: (_, settings, child) => _Section(
               title: '키 딜레이',
               children: [
                 _DelaySlider(
@@ -59,7 +35,7 @@ class SettingsScreen extends StatelessWidget {
                   description: '각 키를 누르고 있는 시간',
                   value: settings.pressDelay,
                   min: 1,
-                  max: 50,
+                  max: 20,
                   onChanged: (v) => settings.setPressDelay(v),
                 ),
                 _DelaySlider(
@@ -67,7 +43,7 @@ class SettingsScreen extends StatelessWidget {
                   description: '키 해제 후 다음 키까지 간격',
                   value: settings.releaseDelay,
                   min: 1,
-                  max: 50,
+                  max: 20,
                   onChanged: (v) => settings.setReleaseDelay(v),
                 ),
                 _DelaySlider(
@@ -77,22 +53,6 @@ class SettingsScreen extends StatelessWidget {
                   min: 1,
                   max: 20,
                   onChanged: (v) => settings.setComboDelay(v),
-                ),
-                _DelaySlider(
-                  label: '전환 누름',
-                  description: '한/영 전환키 누름 시간',
-                  value: settings.togglePress,
-                  min: 5,
-                  max: 50,
-                  onChanged: (v) => settings.setTogglePress(v),
-                ),
-                _DelaySlider(
-                  label: '전환 대기',
-                  description: '한/영 전환 후 IME 전환 대기',
-                  value: settings.toggleDelay,
-                  min: 10,
-                  max: 500,
-                  onChanged: (v) => settings.setToggleDelay(v),
                 ),
                 _DelaySlider(
                   label: '워밍업',
@@ -105,41 +65,28 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
-          Consumer<SettingsService>(
-            builder: (_, settings, child) => _Section(
-              title: '압축 모드 딜레이',
-              children: [
-                _DelaySlider(
-                  label: '키 누름',
-                  description: 'hex 문자 press 타이밍',
-                  value: settings.compressedPressDelay,
-                  min: 1,
-                  max: 20,
-                  onChanged: (v) => settings.setCompressedPressDelay(v),
-                ),
-                _DelaySlider(
-                  label: '키 해제',
-                  description: 'hex 문자 release 타이밍',
-                  value: settings.compressedReleaseDelay,
-                  min: 1,
-                  max: 20,
-                  onChanged: (v) => settings.setCompressedReleaseDelay(v),
-                ),
-                _DelaySlider(
-                  label: '워밍업',
-                  description: '첫 청크 전 USB 호스트 동기화',
-                  value: settings.compressedWarmupDelay,
-                  min: 1,
-                  max: 100,
-                  onChanged: (v) => settings.setCompressedWarmupDelay(v),
-                ),
-              ],
-            ),
-          ),
-          Consumer<TransmissionService>(
-            builder: (_, tx, child) => _Section(
+          Consumer2<SettingsService, TransmissionService>(
+            builder: (_, settings, tx, child) => _Section(
               title: '전송',
               children: [
+                SwitchListTile(
+                  title: const Text('압축 모드'),
+                  subtitle: Text(
+                    settings.transmissionMode == TransmissionMode.compressed
+                        ? '텍스트를 zlib 압축 후 hex로 전송 (디코더 필요)'
+                        : 'ASCII 문자를 직접 전송 (디코더 설치용)',
+                  ),
+                  value: settings.transmissionMode == TransmissionMode.compressed,
+                  onChanged: (v) => settings.setTransmissionMode(
+                    v ? TransmissionMode.compressed : TransmissionMode.direct,
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.code),
+                  title: const Text('H.java 디코더 삽입'),
+                  subtitle: const Text('Direct 모드로 PC에 디코더를 전송'),
+                  onTap: () => Navigator.pop(context, CompressionService.decoderJava),
+                ),
                 ListTile(
                   title: const Text('최대 재시도'),
                   subtitle: Text('${tx.maxRetries}'),

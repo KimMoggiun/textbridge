@@ -1,6 +1,4 @@
 import '../models/protocol.dart';
-import 'hangul_service.dart';
-import 'settings_service.dart';
 
 /// ASCII to HID keycode conversion table.
 /// Ported from test_phase3_protocol.py ASCII_TO_HID.
@@ -110,66 +108,19 @@ const Map<String, KeycodePair> _asciiToHid = {
   '?': KeycodePair(0x38, 0x02),
 };
 
-/// Han/Eng toggle key by OS.
-const KeycodePair _toggleWindows = KeycodePair(0x90, 0x00); // LANG1
-const KeycodePair _toggleMacOS = KeycodePair(0x6D, 0x00);   // F18
-
-/// Letters (a-z, A-Z) produce different output in Korean vs English IME.
-/// Space, digits, punctuation are the same in both modes — no toggle needed.
-bool _isLetterChar(String ch) {
-  final c = ch.codeUnitAt(0);
-  return (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A);
-}
-
-
 /// Convert a text string to a list of HID keycode pairs.
-/// Handles ASCII, Hangul syllables, and automatic Han/Eng toggle insertion.
-/// [targetOS] determines the toggle key used for Han/Eng switching.
-/// Always ends in English mode — trailing toggle added if text ends in Korean.
-({List<KeycodePair> keycodes, int skippedCount}) textToKeycodes(
-  String text, {
-  TargetOS targetOS = TargetOS.windows,
-}) {
+/// Maps ASCII characters only. Non-ASCII characters (Hangul, emoji) are skipped.
+({List<KeycodePair> keycodes, int skippedCount}) textToKeycodes(String text) {
   final result = <KeycodePair>[];
   var skipped = 0;
-  var inKorean = false;
-  final togglePair = targetOS == TargetOS.macOS ? _toggleMacOS : _toggleWindows;
 
   for (final ch in text.split('')) {
-    final cp = ch.codeUnitAt(0);
-
-    if (HangulService.isHangulSyllable(cp)) {
-      // Switch to Korean mode if needed
-      if (!inKorean) {
-        result.add(togglePair);
-        inKorean = true;
-      }
-      result.addAll(HangulService.syllableToKeycodes(cp));
-    } else if (HangulService.isHangulJamo(cp)) {
-      if (!inKorean) {
-        result.add(togglePair);
-        inKorean = true;
-      }
-      result.addAll(HangulService.jamoToKeycodes(cp));
+    final pair = _asciiToHid[ch];
+    if (pair != null) {
+      result.add(pair);
     } else {
-      final pair = _asciiToHid[ch];
-      if (pair != null) {
-        // Only toggle for letter keys — space, digits, punctuation
-        // produce the same output in both Korean and English IME modes.
-        if (inKorean && _isLetterChar(ch)) {
-          result.add(togglePair);
-          inKorean = false;
-        }
-        result.add(pair);
-      } else {
-        skipped++;
-      }
+      skipped++;
     }
-  }
-
-  // Always return to English mode
-  if (inKorean) {
-    result.add(togglePair);
   }
 
   return (keycodes: result, skippedCount: skipped);
@@ -184,30 +135,18 @@ int chunkSizeFromMtu(int mtu) {
   return size.clamp(1, 127); // at least 1, max count fits in uint8
 }
 
-/// Check if a keycode pair is a Han/Eng toggle key.
-bool _isToggleKey(KeycodePair pair) =>
-    pair == _toggleWindows || pair == _toggleMacOS;
-
 /// Split keycodes into chunks with sequence numbers.
-/// Toggle keys (Han/Eng switch) are isolated into single-keycode chunks
-/// to ensure OS input method switch completes before next keycodes.
 /// Sequence starts at 1, wraps at 256.
 List<KeycodeChunk> chunkKeycodes(List<KeycodePair> keycodes, int chunkSize) {
   final chunks = <KeycodeChunk>[];
   var i = 0;
   while (i < keycodes.length) {
-    if (_isToggleKey(keycodes[i])) {
-      final seq = (chunks.length + 1) % 256;
-      chunks.add(KeycodeChunk(seq, [keycodes[i]]));
+    final start = i;
+    while (i < keycodes.length && i - start < chunkSize) {
       i++;
-    } else {
-      final start = i;
-      while (i < keycodes.length && i - start < chunkSize && !_isToggleKey(keycodes[i])) {
-        i++;
-      }
-      final seq = (chunks.length + 1) % 256;
-      chunks.add(KeycodeChunk(seq, keycodes.sublist(start, i)));
     }
+    final seq = (chunks.length + 1) % 256;
+    chunks.add(KeycodeChunk(seq, keycodes.sublist(start, i)));
   }
   return chunks;
 }
@@ -216,10 +155,7 @@ List<KeycodeChunk> chunkKeycodes(List<KeycodePair> keycodes, int chunkSize) {
 int countMappedChars(String text) {
   var count = 0;
   for (final ch in text.split('')) {
-    final cp = ch.codeUnitAt(0);
-    if (_asciiToHid.containsKey(ch) ||
-        HangulService.isHangulSyllable(cp) ||
-        HangulService.isHangulJamo(cp)) {
+    if (_asciiToHid.containsKey(ch)) {
       count++;
     }
   }
@@ -228,8 +164,5 @@ int countMappedChars(String text) {
 
 /// Check if a character has a valid HID mapping.
 bool hasMapping(String ch) {
-  final cp = ch.codeUnitAt(0);
-  return _asciiToHid.containsKey(ch) ||
-      HangulService.isHangulSyllable(cp) ||
-      HangulService.isHangulJamo(cp);
+  return _asciiToHid.containsKey(ch);
 }

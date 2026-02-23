@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 TextBridge Phase 2 BLE GATT 테스트
-- "B6 TextBridge" 스캔
+- "TextBridge" 스캔
 - 연결 → GATT 서비스/특성 확인
 - RX Notify 활성화
 - TX에 테스트 데이터 Write
@@ -29,7 +29,7 @@ TB_SVC_UUID = "12340000-1234-1234-1234-123456789abc"
 TB_TX_UUID  = "12340001-1234-1234-1234-123456789abc"  # Write (phone → keyboard)
 TB_RX_UUID  = "12340002-1234-1234-1234-123456789abc"  # Notify (keyboard → phone)
 
-DEVICE_NAME = "B6 TextBridge"
+DEVICE_NAME = "TextBridge"
 
 
 async def scan(timeout: float) -> list:

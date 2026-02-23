@@ -12,10 +12,9 @@ Flutter 앱이 생성한 키코드/프로토콜 바이트를 그대로 읽어서
 
 사용법:
     python3 test_app_bridge.py --test all
-    python3 test_app_bridge.py --test hangul_mixed_win
-    python3 test_app_bridge.py --test ascii_hello,hangul_pure_win
+    python3 test_app_bridge.py --test ascii_hello
     python3 test_app_bridge.py --list
-    python3 test_app_bridge.py --compare hangul_mixed_win   # Dart vs Python 비교만
+    python3 test_app_bridge.py --compare all   # Dart vs Python 비교만
 """
 
 import asyncio
@@ -37,8 +36,7 @@ from test_phase3_protocol import (
     CMD_KEYCODE, CMD_START, CMD_DONE, CMD_SET_DELAY,
     TextBridgeClient,
     via_start_pairing, scan,
-    hangul_to_keycodes, make_keycode, make_start, make_done, make_set_delay,
-    TOGGLE_WIN, TOGGLE_MAC, _toggle_key,
+    text_to_keycodes, make_keycode, make_start, make_done, make_set_delay,
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -60,19 +58,10 @@ def load_dart_keycodes() -> dict:
 def compare_keycodes(case_name: str, dart_data: dict) -> bool:
     """Dart 앱 키코드와 Python 키코드를 비교"""
     text = dart_data["text"]
-    os_name = dart_data["os"]
     dart_keycodes = [tuple(kp) for kp in dart_data["keycodes"]]
 
     # Python 쪽 키코드 생성
-    import test_phase3_protocol as proto
-    saved_toggle = proto._toggle_key
-    if os_name == "macOS":
-        proto._toggle_key = TOGGLE_MAC
-    else:
-        proto._toggle_key = TOGGLE_WIN
-
-    py_keycodes = hangul_to_keycodes(text)
-    proto._toggle_key = saved_toggle
+    py_keycodes = text_to_keycodes(text)
 
     # 비교
     match = dart_keycodes == py_keycodes
@@ -80,7 +69,6 @@ def compare_keycodes(case_name: str, dart_data: dict) -> bool:
         print(f"  [MATCH] {case_name}: Dart={len(dart_keycodes)}개 == Python={len(py_keycodes)}개")
     else:
         print(f"  [DIFF] {case_name}: Dart={len(dart_keycodes)}개, Python={len(py_keycodes)}개")
-        # 차이점 상세 출력
         max_len = max(len(dart_keycodes), len(py_keycodes))
         for i in range(max_len):
             d = dart_keycodes[i] if i < len(dart_keycodes) else None
@@ -93,20 +81,15 @@ def compare_keycodes(case_name: str, dart_data: dict) -> bool:
 
 
 async def send_dart_keycodes(tb: TextBridgeClient, case_name: str, dart_data: dict) -> bool:
-    """Dart 앱이 생성한 프로토콜 패킷을 그대로 BLE로 전송.
-    Dart textToKeycodes는 trailing toggle을 포함하지 않으므로,
-    ends_in_korean이면 DONE 후 별도 세션으로 toggle 키를 전송한다."""
+    """Dart 앱이 생성한 프로토콜 패킷을 그대로 BLE로 전송."""
     text = dart_data["text"]
-    os_name = dart_data["os"]
     packets = dart_data["packets"]
     keycodes = dart_data["keycodes"]
-    ends_in_korean = dart_data.get("ends_in_korean", False)
 
     print(f"\n=== Bridge Test: {case_name} ===")
-    print(f"  텍스트: '{text}' (OS={os_name})")
+    print(f"  텍스트: '{text}'")
     print(f"  키코드: {len(keycodes)}개, 패킷: {len(packets)}개")
 
-    # 프로토콜 패킷을 순서대로 전송
     for pkt_info in packets:
         pkt_type = pkt_info["type"]
         raw_bytes = bytes(pkt_info["bytes"])
@@ -144,18 +127,6 @@ async def send_dart_keycodes(tb: TextBridgeClient, case_name: str, dart_data: di
             if not resp or resp[0] != RESP_DONE:
                 print(f"  [WARN] DONE 응답 미수신")
 
-    # Trailing toggle: Dart 앱은 endsInKorean 플래그로 별도 처리하지만,
-    # 순차 BLE 전송 시 IME를 영문으로 복귀시켜야 한다.
-    if ends_in_korean:
-        toggle = TOGGLE_MAC if os_name == "macOS" else TOGGLE_WIN
-        await tb.write(make_start(0, 1), "START (trailing toggle)")
-        resp = await tb.wait_response(RESP_READY)
-        if resp and resp[0] == RESP_READY:
-            await tb.write(make_keycode(1, [toggle]), "KEYCODE toggle")
-            await tb.wait_response(RESP_ACK, timeout=10.0)
-            await tb.write(make_done(2), "DONE (trailing toggle)")
-            await tb.wait_response(RESP_DONE)
-
     return True
 
 
@@ -166,7 +137,7 @@ async def run_bridge_tests(address: str, case_names: list[str], dart_data: dict)
     async with BleakClient(address) as client:
         tb = TextBridgeClient(client)
         await tb.connect()
-        await tb.set_delay(press_delay=5, release_delay=5, combo_delay=2, toggle_press=20, toggle_delay=100, warmup_delay=50)
+        await tb.set_delay(press_delay=1, release_delay=1, combo_delay=2, warmup_delay=50)
 
         results = {}
         for name in case_names:
@@ -213,10 +184,9 @@ async def main():
         print(f"\nDart 키코드 테스트 케이스 ({JSON_PATH}):\n")
         for name, data in dart_data.items():
             text = data["text"]
-            os_name = data["os"]
             kc = data["keycode_count"]
             chunks = data["chunk_count"]
-            print(f"  {name:25s} OS={os_name:7s} 키코드={kc:3d} 청크={chunks:2d}  '{text}'")
+            print(f"  {name:25s} 키코드={kc:3d} 청크={chunks:2d}  '{text}'")
         return
 
     # --compare: Dart vs Python 키코드 비교 (오프라인, BLE 불필요)
@@ -243,24 +213,14 @@ async def main():
 
     # --test: BLE 전송 테스트
     if args.test:
-        if args.test == "all":
-            # macOS에서 실행: Windows+한글 케이스는 제외 (LANG1 토글이 macOS에서 안 됨)
-            def _has_korean(text):
-                return any(0xAC00 <= ord(c) <= 0xD7A3 for c in text)
-            case_names = [n for n, d in dart_data.items()
-                          if d["os"] == "macOS" or not _has_korean(d["text"])]
-        else:
-            case_names = [n.strip() for n in args.test.split(",")]
+        case_names = list(dart_data.keys()) if args.test == "all" else \
+                     [n.strip() for n in args.test.split(",")]
 
         # 먼저 Dart vs Python 비교 수행
         print(f"\n[STEP 0] Dart vs Python 키코드 비교")
         for name in case_names:
             if name in dart_data:
                 compare_keycodes(name, dart_data[name])
-
-        # macOS 고정
-        import test_phase3_protocol as proto
-        proto._toggle_key = TOGGLE_MAC
 
         # VIA 페어링
         print("\n[STEP 1] VIA 명령으로 TextBridge 광고 시작")

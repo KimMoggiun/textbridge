@@ -57,11 +57,9 @@ static struct bt_uuid_128 tb_rx_uuid   = BT_UUID_INIT_128(TB_UUID(0x12340002));
 #define TB_SESSION_TIMEOUT_S 30
 
 /* Configurable delay defaults (ms) — overridable via CMD_SET_DELAY */
-#define TB_DEFAULT_PRESS_DELAY   5
-#define TB_DEFAULT_RELEASE_DELAY 5
-#define TB_DEFAULT_COMBO_DELAY   20
-#define TB_DEFAULT_TOGGLE_PRESS  20
-#define TB_DEFAULT_TOGGLE_DELAY  100
+#define TB_DEFAULT_PRESS_DELAY   1
+#define TB_DEFAULT_RELEASE_DELAY 1
+#define TB_DEFAULT_COMBO_DELAY   2
 #define TB_DEFAULT_WARMUP_DELAY  50
 
 /* ---------- State ---------- */
@@ -88,8 +86,6 @@ static bool tb_needs_warmup;
 static uint8_t tb_press_delay   = TB_DEFAULT_PRESS_DELAY;
 static uint8_t tb_release_delay = TB_DEFAULT_RELEASE_DELAY;
 static uint8_t tb_combo_delay   = TB_DEFAULT_COMBO_DELAY;
-static uint8_t tb_toggle_press  = TB_DEFAULT_TOGGLE_PRESS;
-static uint8_t tb_toggle_delay  = TB_DEFAULT_TOGGLE_DELAY;
 static uint8_t tb_warmup_delay  = TB_DEFAULT_WARMUP_DELAY;
 
 /* ---------- Forward declarations ---------- */
@@ -220,13 +216,9 @@ static void tb_inject_work_handler(struct k_work *work)
         uint8_t kc = tb_kc_buf[i].keycode;
         uint8_t mod = tb_kc_buf[i].modifier;
 
-        bool is_toggle = (kc == 0x90) ||
-                         (kc == 0x2C && mod == 0x01);  /* LANG1 or Ctrl+Space */
-
-        if (mod && !is_toggle) {
+        if (mod) {
             /* Atomic modifier+key: press and release together in one report.
-             * Avoids lone-modifier report that macOS interprets as CJK toggle (HF-002).
-             * combo_delay is not needed — OS sees modifier+key simultaneously. */
+             * Avoids lone-modifier report that macOS interprets as CJK toggle. */
             zmk_hid_register_mods(mod);
             tb_active_mods = mod;
             zmk_hid_keyboard_press(kc);
@@ -237,37 +229,17 @@ static void tb_inject_work_handler(struct k_work *work)
             zmk_hid_unregister_mods(mod);
             tb_active_mods = 0;
             zmk_endpoints_send_report(0x07);
-        } else if (mod && is_toggle) {
-            /* Toggle with modifier (e.g., Ctrl+Space): separate reports.
-             * combo_delay gives OS time to recognize modifier before key. */
-            LOG_INF("TB toggle combo_delay=%d toggle_press=%d", tb_combo_delay, tb_toggle_press);
-            zmk_hid_register_mods(mod);
-            tb_active_mods = mod;
-            zmk_endpoints_send_report(0x07);
-            k_msleep(tb_combo_delay);
-
-            zmk_hid_keyboard_press(kc);
-            zmk_endpoints_send_report(0x07);
-            k_msleep(tb_toggle_press);
-
-            zmk_hid_keyboard_release(kc);
-            zmk_endpoints_send_report(0x07);
-            k_msleep(tb_combo_delay);
-            zmk_hid_unregister_mods(mod);
-            tb_active_mods = 0;
-            zmk_endpoints_send_report(0x07);
         } else {
-            /* Simple key or toggle without modifier (LANG1) */
+            /* Simple key without modifier */
             zmk_hid_keyboard_press(kc);
             zmk_endpoints_send_report(0x07);
-            k_msleep(is_toggle ? tb_toggle_press : tb_press_delay);
+            k_msleep(tb_press_delay);
 
             zmk_hid_keyboard_release(kc);
             zmk_endpoints_send_report(0x07);
         }
 
-        /* Inter-key delay: toggle_delay for IME keys, release_delay otherwise */
-        k_msleep(is_toggle ? tb_toggle_delay : tb_release_delay);
+        k_msleep(tb_release_delay);
     }
 
     /* Send ACK if not aborted */
@@ -404,7 +376,7 @@ static ssize_t tb_tx_write_cb(struct bt_conn *conn,
     }
 
     case TB_CMD_SET_DELAY: {
-        if (len < 7) {
+        if (len < 5) {
             break;
         }
         if (tb_transmitting) {
@@ -414,12 +386,9 @@ static ssize_t tb_tx_write_cb(struct bt_conn *conn,
         tb_press_delay   = data[1] > 0 ? data[1] : TB_DEFAULT_PRESS_DELAY;
         tb_release_delay = data[2] > 0 ? data[2] : TB_DEFAULT_RELEASE_DELAY;
         tb_combo_delay   = data[3] > 0 ? data[3] : TB_DEFAULT_COMBO_DELAY;
-        tb_toggle_press  = data[4] > 0 ? data[4] : TB_DEFAULT_TOGGLE_PRESS;
-        tb_toggle_delay  = data[5] > 0 ? data[5] : TB_DEFAULT_TOGGLE_DELAY;
-        tb_warmup_delay  = data[6] > 0 ? data[6] : TB_DEFAULT_WARMUP_DELAY;
-        LOG_INF("TB SET_DELAY press=%d rel=%d combo=%d tgPress=%d tgDelay=%d warmup=%d",
-                tb_press_delay, tb_release_delay, tb_combo_delay,
-                tb_toggle_press, tb_toggle_delay, tb_warmup_delay);
+        tb_warmup_delay  = data[4] > 0 ? data[4] : TB_DEFAULT_WARMUP_DELAY;
+        LOG_INF("TB SET_DELAY press=%d rel=%d combo=%d warmup=%d",
+                tb_press_delay, tb_release_delay, tb_combo_delay, tb_warmup_delay);
         tb_send_response(TB_RESP_ACK, 0);
         break;
     }
@@ -554,6 +523,11 @@ static void tb_connected(struct bt_conn *conn, uint8_t err)
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
     LOG_INF("TextBridge connected: %s", addr);
 
+    if (tb_conn) {
+        LOG_WRN("TextBridge: replacing stale connection");
+        bt_conn_unref(tb_conn);
+        tb_conn = NULL;
+    }
     tb_conn = bt_conn_ref(conn);
     tb_advertising = false;
 }

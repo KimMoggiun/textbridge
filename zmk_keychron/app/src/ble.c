@@ -1032,6 +1032,12 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
 }
 
 static void security_changed(struct bt_conn *conn, bt_security_t level, enum bt_security_err err) {
+    struct bt_conn_info info;
+    bt_conn_get_info(conn, &info);
+    if (info.id == BT_ID_DEFAULT) {
+        return;
+    }
+
     char addr[BT_ADDR_LE_STR_LEN];
 
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
@@ -1160,6 +1166,10 @@ static void auth_pairing_complete(struct bt_conn *conn, bool bonded) {
 
     bt_addr_le_to_str(dst, addr, sizeof(addr));
     bt_conn_get_info(conn, &info);
+
+    if (info.id == BT_ID_DEFAULT) {
+        return;
+    }
 
     if (info.role != BT_CONN_ROLE_PERIPHERAL) {
         LOG_DBG("SKIPPING FOR ROLE %d", info.role);

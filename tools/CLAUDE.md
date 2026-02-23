@@ -7,26 +7,61 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #2764 | 2:05 AM | 🔵 | Single Character Test Shows IME Back in Korean Mode After Successful Tests | ~407 |
-| #2763 | 2:00 AM | 🔴 | HID Log Confirms Three Korean Texts with Proper Toggle Sequences | ~505 |
-| #2761 | 1:58 AM | 🔴 | Ctrl+Space Toggle Successfully Injected with Control Modifier - IME Switches to English | ~482 |
-| #2759 | 1:55 AM | 🔵 | HID Log Shows Korean Characters for ASCII Test Input | ~391 |
-| #2757 | 1:52 AM | 🔵 | Log Shows Korean Jamo Characters Mixed with English, Confirming IME Not Switching | ~453 |
-| #2756 | " | 🔵 | Critical Finding: Zero Ctrl+Space Toggle Events in HID Log | ~447 |
-| #2755 | 1:51 AM | 🔵 | Right Arrow Key Events Captured in HID Log | ~418 |
-| #2754 | " | 🔵 | HID Log Shows Control Modifier Present for Ctrl+C but Not for Space | ~392 |
-| #2752 | 1:50 AM | ✅ | Add Right Arrow Before Toggle Keys to Commit IME Composition | ~478 |
-| #2750 | " | 🔵 | Flutter Test Suite Passes 72/72 Tests with Fresh JSON Export | ~559 |
-| #2742 | 1:48 AM | 🔵 | Complete Test Suite Architecture and Execution Flow | ~755 |
-| #2741 | 1:47 AM | 🔵 | HID Logger Output Reveals Korean Input Mode Issues | ~429 |
-| #2740 | " | 🔵 | Bluetooth Cache Reset Utility for GATT Issues | ~305 |
-| #2739 | 1:46 AM | 🔵 | TextBridge Pairing Mode Automation Tool | ~348 |
-| #2738 | " | 🔵 | DFU Mode Entry Tool for Firmware Updates | ~328 |
-| #2737 | " | 🔵 | Phase 2 BLE GATT Connectivity Test | ~441 |
-| #2736 | " | 🔵 | App-Firmware Bridge Test Architecture | ~481 |
-| #2735 | " | 🔵 | Phase 5 Hangul Test Suite Structure | ~396 |
-| #2734 | 1:45 AM | 🔵 | TextBridge Protocol Implementation with Korean Input Support | ~553 |
-| #2732 | " | 🔵 | HID Logger Tool for Keyboard Event Debugging | ~351 |
+| #3004 | 9:46 PM | 🔵 | All 77 Flutter tests now passing including fixed export tests | ~389 |
+| #2975 | 9:25 PM | ✅ | Staged Multiple Test and Service Files for Commit | ~264 |
+| #2974 | 9:22 PM | 🔵 | Verified Dart and Python keycode generation produce identical outputs | ~276 |
+| #2973 | " | ✅ | Reduced toggle_delay from 500ms to 100ms in Korean text test script | ~278 |
+| #2972 | 9:21 PM | ✅ | Reduced toggle_delay from 500ms to 100ms in bridge test configuration | ~244 |
+| #2968 | " | 🔴 | Changed macOS language toggle from Ctrl+Space to F18 | ~268 |
+| #2965 | " | 🔵 | TextBridge uses platform-specific IME toggle keycodes for language switching | ~454 |
+| #2963 | 9:20 PM | 🔵 | TextBridge Phase 3 automated protocol testing framework discovered | ~474 |
+| #2957 | 9:10 PM | ✅ | Increased toggle_delay from 100ms to 500ms in test script | ~295 |
+| #2954 | 9:09 PM | 🔵 | Current toggle_delay setting found in test script | ~227 |
+| #2947 | 8:47 PM | ✅ | Re-exported keycode test cases to JSON for firmware bridge testing | ~229 |
+| #2946 | " | 🔵 | TextBridge app-firmware bridge test infrastructure examined | ~395 |
+| #2815 | 7:30 PM | ✅ | Committed Bridge Test Toggle Delay Fix to Repository | ~388 |
+| #2814 | " | 🔵 | Git Status Shows Two Modified Files and Extensive Untracked Files | ~464 |
+| #2813 | " | ✅ | Increased Toggle Delay to 300ms in Bridge Test Configuration | ~454 |
+| #2809 | 7:27 PM | 🔵 | Bridge Test All 6/6 Cases Pass with Default Toggle Delay | ~476 |
+| #2808 | 7:26 PM | ✅ | Increased Toggle Delay to 300ms in App Bridge Test Script | ~371 |
+| #2807 | 7:25 PM | 🔵 | App-Firmware Bridge Test Validates Dart-to-BLE-to-Firmware Pipeline | ~505 |
+| #2806 | 7:24 PM | ✅ | Phase 5 Hangul E2E Tests All Passing - 12 Test Cases Successful | ~472 |
+| #2805 | 7:23 PM | 🔵 | Phase 3 Protocol Test Successfully Transmits Text via BLE | ~268 |
+| #2804 | " | 🔵 | BLE Text Transmission Test Failed After Successful Pairing and Scanning | ~357 |
+| #2803 | 7:22 PM | 🔴 | BLE Protocol Test Failed After Rollback - Transmission Issue Detected | ~444 |
+| #2802 | " | 🔵 | Phase 2 BLE GATT Connectivity Test Passes Successfully | ~489 |
+| #2799 | 7:21 PM | ✅ | Flutter Test Suite Passes All 73 Tests After Rollback | ~505 |
+| #2796 | " | 🔵 | Dart-Python Keycode Comparison Shows 12/12 Perfect Match | ~409 |
+| #2777 | 7:17 PM | 🔵 | Comprehensive Documentation Review Confirms Production-Ready Status | ~716 |
+| #2774 | " | 🔵 | Comprehensive Python Tools Code Review Reveals Trailing Toggle Inconsistency | ~617 |
+| #2768 | 7:15 PM | ✅ | Complete Rollback of Right Arrow IME Composition Fix | ~443 |
+| #2767 | " | ✅ | All Changes Reverted - Right Arrow IME Fix Discarded | ~363 |
+| #2766 | 7:12 PM | 🟣 | Right Arrow Commit Before IME Toggle to Fix Hangul Composition | ~554 |
+| #2730 | 1:42 AM | ✅ | Documented HID Logger Tool in Project Documentation | ~505 |
+| #2728 | 1:40 AM | 🟣 | File Logging Verification Successful | ~351 |
+| #2727 | " | ✅ | Started HID Logger in Background | ~168 |
+| #2726 | " | 🟣 | HID Logger File Output Implementation Complete | ~352 |
+| #2725 | " | 🟣 | Completed File Logging with Header and Cleanup | ~297 |
+| #2724 | " | ✅ | Added File Handle Cleanup on Error Path | ~177 |
+| #2723 | 1:39 AM | ✅ | Converted Event Logging to Use File Output | ~190 |
+| #2722 | " | 🟣 | Implemented Dual Output Logging Function | ~268 |
+| #2721 | " | ✅ | Added File Logging Infrastructure Setup | ~176 |
+| #2720 | " | 🔵 | Current HID Logger Implementation Analysis | ~289 |
+| #2719 | " | 🔵 | HID Logger Tool Located | ~159 |
+
+### Feb 23, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #3697 | 10:35 PM | ✅ | Flutter Test Suite Verification Complete | ~316 |
+| #3696 | 10:34 PM | 🔵 | TextBridge Flutter Test Suite Verification | ~364 |
+| #3694 | 10:02 PM | 🔵 | Systematic codebase exploration reveals multiple integration and cleanup issues | ~469 |
+| #3693 | 10:01 PM | 🔵 | Comprehensive TextBridge protocol testing tool examined | ~477 |
+| #3692 | " | 🔵 | Phase 2 BLE GATT test script examined for basic connectivity verification | ~375 |
+| #3687 | 9:55 PM | 🔵 | Comprehensive codebase review identified critical device name and toggle key detection mismatches | ~536 |
+| #3680 | 9:53 PM | 🔵 | macOS toggle key implementation verified as F18 across codebase | ~316 |
+| #3678 | " | 🔵 | TextBridge pairing tool using VIA Raw HID command examined | ~346 |
+| #3675 | " | 🔵 | DFU mode entry tool uses VIA protocol HID command for bootloader access | ~309 |
 </claude-mem-context>
 
 # TextBridge Tools
@@ -53,7 +88,7 @@ cd ~/project/textbridge/zmk_keychron/app && \
 west build --pristine -b keychron -- -DSHIELD=keychron_b6_us
 ```
 
-출력: `build/zephyr/zmk.uf2` (FLASH 25%, SRAM 33%)
+출력: `build/zephyr/zmk.uf2` (FLASH 25%, SRAM 34%)
 
 `--pristine` 생략하면 증분 빌드 (변경 파일만 재컴파일).
 
@@ -65,13 +100,19 @@ python3 enter_dfu.py && sleep 3 && cp ~/project/textbridge/zmk_keychron/app/buil
 
 수동 DFU: 키보드 ESC 누른 채 USB 연결.
 
+## 압축 전용 모드
+
+텍스트는 항상 압축(zlib → hex) 후 전송된다. Flutter 앱이 원문을 UTF-8 → zlib 압축 → hex 인코딩하여 0-9, a-f 문자만 키보드로 보낸다. PC 측에서 Java 디코더(H.java)로 원문 복원.
+
+한글, 이모지 등 비ASCII 문자도 압축 경유로 전송 가능. OS별 토글키(한영전환)가 불필요.
+
 ## 텍스트 전송 (test_phase3_protocol.py)
 
-VIA 페어링 → BLE 스캔 → 연결 → 키코드 전송 → Enter. 모두 자동. macOS(Ctrl+Space 토글) 고정.
+VIA 페어링 → BLE 스캔 → 연결 → 키코드 전송 → Enter. 모두 자동. ASCII만 매핑.
 
 ```bash
 python3 test_phase3_protocol.py --text "hello"
-python3 test_phase3_protocol.py --text "Hello 안녕 World"
+python3 test_phase3_protocol.py --text "0123456789abcdef"
 ```
 
 출력:
@@ -82,34 +123,12 @@ scanning... 7B2890F5-B71F-CC2C-0CC1-C9A378436B0B
 sending... ok
 ```
 
-## 한글 전송 테스트 (test_phase5_hangul.py)
-
-사전 정의된 한글 테스트 케이스를 순서대로 전송. 각 텍스트마다 Enter 포함.
-
-```bash
-python3 test_phase5_hangul.py --test pure        # 순수 한글 (안녕하세요, 대한민국, 프로그래밍)
-python3 test_phase5_hangul.py --test mixed       # 한영 혼합
-python3 test_phase5_hangul.py --test complex     # 쌍자음/겹받침 (까닭없이, 왕관, 값싼, 읽다, 앉다)
-python3 test_phase5_hangul.py --test all         # 전체
-```
-
-출력:
-
-```
-pairing... ok
-scanning... 7B2890F5-B71F-CC2C-0CC1-C9A378436B0B
-안녕하세요... ok
-대한민국... ok
-```
-
 ## Dart-Python 키코드 비교 (test_app_bridge.py)
 
 ```bash
-python3 test_app_bridge.py --compare all         # 오프라인 비교 (BLE 불필요, 12/12 MATCH)
-python3 test_app_bridge.py --test all            # BLE 전송 테스트 (macOS에서: Windows+한글 케이스 자동 제외, 6/6)
+python3 test_app_bridge.py --compare all         # 오프라인 비교 (BLE 불필요)
+python3 test_app_bridge.py --test all            # BLE 전송 테스트
 ```
-
-`--test all`은 macOS에서 실행 시 Windows 토글(LANG1)이 필요한 한글 케이스를 자동 제외한다. ASCII 3개 + macOS 한글 3개 = 6개만 BLE로 전송.
 
 ## 기타 도구
 
@@ -143,10 +162,7 @@ HID 주입된 문자들이 Claude Code 입력창에 타이핑된다.
 1. **예상 텍스트를 기억한다** — Python 스크립트가 보낼 텍스트를 미리 알고 있어야 한다
 2. **Python 스크립트를 백그라운드로 실행한다** — Bash 도구의 `run_in_background` 사용
    ```bash
-   # 단일 텍스트 검증
    python3 test_phase3_protocol.py --text "hello"
-   # 한글 그룹 검증
-   python3 test_phase5_hangul.py --test pure
    ```
    - 모든 스크립트는 텍스트 끝에 Enter(0x28)를 자동 추가한다
 3. **다음 사용자 메시지를 기다린다** — HID 주입이 완료되면 Enter에 의해 자동 제출된다
@@ -155,10 +171,6 @@ HID 주입된 문자들이 Claude Code 입력창에 타이핑된다.
 
 ### 전제 조건
 
-- **macOS 입력 소스가 영문(ABC)** 상태에서 시작해야 한다. 모든 테스트는 시스템 초기 입력이 영어라고 가정한다.
-- 한글 텍스트가 시작되면 `hangul_to_keycodes`가 자동으로 Ctrl+Space 토글키를 삽입하여 한글 입력으로 전환한다.
-- `hangul_to_keycodes`는 텍스트 끝이 한글이면 자동으로 trailing toggle을 추가하여 영문으로 복귀한다. 따라서 매 전송 후 시스템은 영문 상태로 돌아온다.
-- 참고: Dart 앱의 `textToKeycodes`는 trailing toggle을 포함하지 않는다 (`endsInKorean` 플래그로 별도 처리). `test_app_bridge.py`는 Dart 키코드 사용 시 `ends_in_korean` 플래그를 확인하여 별도 세션으로 trailing toggle을 전송한다.
 - 사용자가 Claude Code 터미널 입력창에 커서 포커스를 유지해야 한다
 - 테스트 도중 사용자가 직접 타이핑하면 검증이 깨진다
 
@@ -167,7 +179,6 @@ HID 주입된 문자들이 Claude Code 입력창에 타이핑된다.
 - **macOS BLE GATT 캐시**: 펌웨어 리플래시 또는 비정상 BLE 해제 후 macOS가 CCC 상태를 캐싱하여 `tb_notify_enabled`가 false로 남을 수 있음. 해결: macOS Bluetooth 끄고 켜기.
 - **키보드 전원 리셋**: 배터리가 있어 USB 재연결만으론 펌웨어 상태가 초기화되지 않음. 뒷면 전원 스위치 OFF → 5초 → ON.
 - **실행 디렉터리**: 모든 스크립트는 `tools/` 디렉터리에서 실행. `cd tools && python3 <script>.py`
-- **macOS Carbon API 제한**: `TISCopyCurrentKeyboardInputSource()`는 호출 프로세스의 입력 소스를 반환한다. 백그라운드 Python에서 호출하면 포커스된 앱(Claude Code)의 입력 소스가 아닌 Python 프로세스의 입력 소스(항상 ABC)가 반환된다. 입력 소스 감지에 사용 불가.
 
 ## 시리얼 로그
 
