@@ -19,5 +19,14 @@ flutter_app/textbridge_app/.flutter-plugins-dependencies
 __pycache__/
 *.pyc
 
+# Android SDK tools
+tools/build-tools/
+tools/platform-tools/
+tools/platforms/
+tools/licenses/
+tools/hid_log.txt
+tools/.knownPackages
+tools/.temp/
+
 # OS
 .DS_Store

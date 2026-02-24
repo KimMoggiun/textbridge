@@ -82,7 +82,7 @@ void main() {
       expect(svc.comboDelay, 255);
 
       await svc.setWarmupDelay(0);
-      expect(svc.warmupDelay, 1);
+      expect(svc.warmupDelay, 1); // min 1ms — firmware treats 0 as default 50ms
     });
 
     test('setLastDeviceAddress persists and reflects value', () async {

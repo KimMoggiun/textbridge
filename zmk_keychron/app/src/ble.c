@@ -36,6 +36,7 @@
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/activity.h>
 #include <zmk/ble.h>
+#include <zmk/textbridge.h>
 #include <zmk/keys.h>
 #include <zmk/split/bluetooth/uuid.h>
 #include <zmk/event_manager.h>
@@ -574,6 +575,8 @@ int update_advertising() {
             k_work_reschedule(&adv_timeout_work, timeout);
         }
         break;
+    default:
+        break;
     }
 
     return 0;
@@ -691,7 +694,6 @@ int zmk_ble_prof_pair_start(uint8_t index) {
         return 0;
     }
     if (get_current_transport() == ZMK_TRANSPORT_USB) {
-        extern int zmk_textbridge_pair_start(void);
         return zmk_textbridge_pair_start();
     }
     if(get_current_transport()!=ZMK_TRANSPORT_BLE || (index>=3))
@@ -754,7 +756,6 @@ int zmk_ble_prof_select(uint8_t index) {
         return 0;
     }
     if (get_current_transport() == ZMK_TRANSPORT_USB) {
-        extern int zmk_textbridge_pair_start(void);
         return zmk_textbridge_pair_start();
     }
     if(get_current_transport()!=ZMK_TRANSPORT_BLE || (index>=3))

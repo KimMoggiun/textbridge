@@ -22,23 +22,13 @@ except ImportError:
     print("Error: hidapi not installed. Run: pip install hidapi")
     sys.exit(1)
 
-VENDOR_ID = 0x3434
-PRODUCT_ID = 0x0761
-RAW_USAGE_PAGE = 0xFF60
-RAW_EPSIZE = 32
+from hid_util import find_raw_hid_interface, VENDOR_ID, PRODUCT_ID, RAW_USAGE_PAGE, RAW_EPSIZE
 
 CMD_MODE_USB = 0xFC
 CMD_MODE_BLE = 0xFB
 CMD_STATUS = 0xFA
 
 ZMK_ADV = {0: "NONE", 1: "DIR", 2: "CONN", 3: "RECONN", 4: "PAIR"}
-
-
-def find_raw_hid_path():
-    for device in hid.enumerate(VENDOR_ID, PRODUCT_ID):
-        if device['usage_page'] == RAW_USAGE_PAGE:
-            return device['path']
-    return None
 
 
 class HidSession:
@@ -49,7 +39,7 @@ class HidSession:
         self.path = None
 
     def open(self):
-        self.path = find_raw_hid_path()
+        self.path = find_raw_hid_interface()
         if not self.path:
             print("ERROR: 키보드 없음")
             sys.exit(1)

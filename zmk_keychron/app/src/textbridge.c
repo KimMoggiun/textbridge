@@ -20,6 +20,7 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zmk/hid.h>
 #include <zmk/endpoints.h>
+#include <zmk/ble.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/endpoint_changed.h>
@@ -247,6 +248,7 @@ static void tb_inject_work_handler(struct k_work *work)
 
         uint8_t kc = tb_kc_buf[i].keycode;
         uint8_t mod = tb_kc_buf[i].modifier;
+        int ret;
 
         if (mod) {
             /* Atomic modifier+key: press and release together in one report.
@@ -255,7 +257,18 @@ static void tb_inject_work_handler(struct k_work *work)
             zmk_hid_register_mods(mod);
             tb_active_mods = mod;
             zmk_hid_keyboard_press(kc);
-            zmk_endpoints_send_report(0x07);
+            ret = zmk_endpoints_send_report(0x07);
+            if (ret) {
+                LOG_ERR("TB inject send failed (err %d), aborting", ret);
+                zmk_hid_keyboard_release(kc);
+                zmk_hid_unregister_mods(mod);
+                tb_active_mods = 0;
+                zmk_hid_keyboard_clear();
+                zmk_endpoints_send_report(0x07);
+                tb_injecting = false;
+                tb_send_error(tb_current_seq, TB_ERR_OVERFLOW);
+                return;
+            }
             k_msleep(tb_combo_delay);
 
             zmk_hid_keyboard_release(kc);
@@ -265,7 +278,16 @@ static void tb_inject_work_handler(struct k_work *work)
         } else {
             /* Simple key without modifier */
             zmk_hid_keyboard_press(kc);
-            zmk_endpoints_send_report(0x07);
+            ret = zmk_endpoints_send_report(0x07);
+            if (ret) {
+                LOG_ERR("TB inject send failed (err %d), aborting", ret);
+                zmk_hid_keyboard_release(kc);
+                zmk_hid_keyboard_clear();
+                zmk_endpoints_send_report(0x07);
+                tb_injecting = false;
+                tb_send_error(tb_current_seq, TB_ERR_OVERFLOW);
+                return;
+            }
             k_msleep(tb_press_delay);
 
             zmk_hid_keyboard_release(kc);
@@ -517,7 +539,6 @@ static int tb_start_pairing_adv(void)
     /* 단일 광고 슬롯: ZMK 광고가 잔존할 수 있으므로 정리 후 시작.
      * bt_le_adv_stop()은 idempotent (광고 없으면 no-op). */
     bt_le_adv_stop();
-    extern void zmk_ble_notify_adv_stopped(void);
     zmk_ble_notify_adv_stopped();
 
     struct bt_le_adv_param adv_param = *BT_LE_ADV_CONN;
@@ -537,7 +558,7 @@ static int tb_start_pairing_adv(void)
 }
 
 /* Advertising timeout for reconnect mode */
-#define TB_RECONN_ADV_TIMEOUT_MS 5000
+#define TB_RECONN_ADV_TIMEOUT_MS 10000
 
 static void tb_adv_timeout_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(tb_adv_timeout_work, tb_adv_timeout_handler);
@@ -551,7 +572,7 @@ static void tb_adv_timeout_handler(struct k_work *work)
 }
 
 /* Reconnect mode: whitelist-filtered advertising to bonded peer only.
- * Uses accept list + 5-second timeout for power efficiency.
+ * Uses accept list + 10-second timeout for power efficiency.
  * Always force-restart to avoid stale tb_advertising flag desync. */
 static int tb_start_reconnect_adv(void)
 {
@@ -563,7 +584,6 @@ static int tb_start_reconnect_adv(void)
 
     bt_set_name(TB_DEVICE_NAME);
     bt_le_adv_stop();
-    extern void zmk_ble_notify_adv_stopped(void);
     zmk_ble_notify_adv_stopped();
 
     /* Populate accept list with bonded peer */
@@ -631,7 +651,6 @@ static void tb_connected(struct bt_conn *conn, uint8_t err)
 
     /* Reject TextBridge connections when not in USB mode.
      * Phone may auto-reconnect to bonded identity 0 in BT mode. */
-    extern uint8_t get_current_transport(void);
     if (get_current_transport() != ZMK_TRANSPORT_USB) {
         LOG_INF("TextBridge rejecting conn in non-USB mode");
         bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
@@ -685,7 +704,6 @@ static void tb_disconnected(struct bt_conn *conn, uint8_t reason)
 
     /* Auto-reconnect: if USB mode and bonded, re-advertise to peer.
      * bt_set_name stays as "TextBridge" since reconnect adv will set it. */
-    extern uint8_t get_current_transport(void);
     if (get_current_transport() == ZMK_TRANSPORT_USB && tb_bonded) {
         tb_pairing_mode = false;
         tb_start_reconnect_adv();
@@ -771,7 +789,6 @@ static void tb_bt_enable_work_handler(struct k_work *work)
     LOG_INF("TextBridge: BLE stack ready (bonded=%d)", tb_bonded);
 
     /* If bonded and already in USB mode, start reconnect advertising */
-    extern uint8_t get_current_transport(void);
     if (tb_bonded && get_current_transport() == ZMK_TRANSPORT_USB) {
         tb_pairing_mode = false;
         tb_start_reconnect_adv();

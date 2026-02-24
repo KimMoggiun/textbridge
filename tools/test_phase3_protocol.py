@@ -143,19 +143,12 @@ def via_start_pairing() -> bool:
     """VIA Raw HID로 0xFE 명령 전송하여 TextBridge 광고 시작"""
     try:
         import hid
+        from hid_util import find_raw_hid_interface, VENDOR_ID, PRODUCT_ID, RAW_USAGE_PAGE
     except ImportError:
         print("[PAIR] hidapi 미설치. pip install hidapi")
         return False
 
-    VENDOR_ID = 0x3434
-    PRODUCT_ID = 0x0761
-    RAW_USAGE_PAGE = 0xFF60
-
-    path = None
-    for device in hid.enumerate(VENDOR_ID, PRODUCT_ID):
-        if device['usage_page'] == RAW_USAGE_PAGE:
-            path = device['path']
-            break
+    path = find_raw_hid_interface()
 
     if not path:
         return False

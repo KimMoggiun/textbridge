@@ -90,6 +90,7 @@ int zmk_usb_hid_send_report(const uint8_t *report, size_t len) {
         if(sem_err)
         {
             LOG_ERR("sem err:%d",sem_err);
+            return sem_err;
         }
         LOG_HEXDUMP_DBG(report,len,"usb");
         int err;

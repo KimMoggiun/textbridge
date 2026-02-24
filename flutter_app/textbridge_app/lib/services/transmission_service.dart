@@ -66,6 +66,7 @@ class TransmissionService extends ChangeNotifier {
   Future<bool> sendText(String text) async {
     if (_isTransmitting) return false;
     if (!_ble.state.isConnected) return false;
+    if (text.isEmpty) return false;
 
     // Direct mode: send ASCII keycodes directly
     // Compressed mode: text → zlib → hex → keycodes
@@ -94,7 +95,7 @@ class TransmissionService extends ChangeNotifier {
     _abortRequested = false;
     _lastError = null;
     _failedAtKeycode = null;
-    _ble.setState(TbConnectionState.transmitting);
+    _ble.setTransmitting(true);
     _progress = TransmissionProgress(
       sentChunks: 0,
       totalChunks: chunks.length,
@@ -106,13 +107,18 @@ class TransmissionService extends ChangeNotifier {
     // Set up response queue (list-based to avoid subscription gaps)
     final responseQueue = Queue<Uint8List>();
     Completer<void>? responseWaiter;
-    _responseSub = _ble.responses.listen((data) {
-      debugPrint('[TB-Q] enqueue: ${data.map((b) => "0x${b.toRadixString(16)}").toList()}');
-      responseQueue.add(data);
-      if (responseWaiter != null && !responseWaiter!.isCompleted) {
-        responseWaiter!.complete();
-      }
-    });
+    _responseSub = _ble.responses.listen(
+      (data) {
+        debugPrint('[TB-Q] enqueue: ${data.map((b) => "0x${b.toRadixString(16)}").toList()}');
+        responseQueue.add(data);
+        if (responseWaiter != null && !responseWaiter!.isCompleted) {
+          responseWaiter!.complete();
+        }
+      },
+      onError: (e) {
+        debugPrint('[TB-Q] stream error: $e');
+      },
+    );
 
     try {
       // 0. Send delay configuration to firmware
@@ -125,9 +131,15 @@ class TransmissionService extends ChangeNotifier {
         ));
         final delayResp = await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, const Duration(seconds: 2));
         debugPrint('[TB] SET_DELAY resp: ${delayResp != null ? delayResp.map((b) => "0x${b.toRadixString(16)}").toList() : "TIMEOUT"}');
-        if (delayResp != null && delayResp.isNotEmpty && delayResp[0] == respError) {
-          _lastError = 'SET_DELAY rejected by keyboard';
-          return false;
+        if (delayResp != null && delayResp.isNotEmpty) {
+          if (delayResp[0] == respError) {
+            _lastError = 'SET_DELAY rejected by keyboard';
+            return false;
+          }
+          if (delayResp[0] == respNack) {
+            _lastError = 'SET_DELAY rejected (transmission in progress)';
+            return false;
+          }
         }
       }
 
@@ -207,7 +219,11 @@ class TransmissionService extends ChangeNotifier {
       // 3. Send DONE
       final doneSeq = (chunks.length + 1) % 256;
       await _ble.write(makeDone(doneSeq));
-      await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, const Duration(seconds: 5));
+      final doneResp = await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, const Duration(seconds: 5));
+      if (doneResp != null && doneResp.isNotEmpty && doneResp[0] == respError) {
+        _lastError = 'DONE rejected by keyboard';
+        return false;
+      }
 
       return true;
     } catch (e) {
@@ -218,7 +234,7 @@ class TransmissionService extends ChangeNotifier {
       _responseSub?.cancel();
       _responseSub = null;
       if (_ble.state == TbConnectionState.transmitting) {
-        _ble.setState(TbConnectionState.connected);
+        _ble.setTransmitting(false);
       }
       notifyListeners();
     }

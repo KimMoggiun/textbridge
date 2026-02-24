@@ -16,6 +16,7 @@
 #include "dynamic_keymap.h"
 #include <zephyr/settings/settings.h>
 #include <zmk/endpoints.h>
+#include <zmk/textbridge.h>
 #include <zephyr/sys/reboot.h>
 #if (CONFIG_SHIELD_KEYCHRON_B6_JIS||CONFIG_SHIELD_KEYCHRON_B1_JIS ||CONFIG_SHIELD_KEYCHRON_B2_JIS)
 //for jis layout!
@@ -807,7 +808,6 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         break;
     }
     case 0xFE: {
-        extern int zmk_textbridge_pair_start(void);
         zmk_textbridge_pair_start();
         break;
     }
@@ -832,7 +832,6 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
     }
     case 0xFA: {
         /* Query TextBridge + keyboard BLE state */
-        extern void zmk_textbridge_get_status(uint8_t *, uint8_t *, uint8_t *);
         command_data[0] = get_current_transport();
         zmk_textbridge_get_status(&command_data[1], &command_data[2], &command_data[3]);
         /* [4]=zmk_adv_status (0=NONE,1=DIR,2=CONN,3=RECONN,4=PAIR), [5]=profile_connected */

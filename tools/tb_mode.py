@@ -23,11 +23,7 @@ except ImportError:
     print("Run: pip install hidapi")
     sys.exit(1)
 
-# Keychron B6 Pro
-VENDOR_ID = 0x3434
-PRODUCT_ID = 0x0761
-RAW_USAGE_PAGE = 0xFF60
-RAW_EPSIZE = 32
+from hid_util import find_raw_hid_interface, VENDOR_ID, PRODUCT_ID, RAW_USAGE_PAGE, RAW_EPSIZE
 
 # VIA commands
 CMD_TB_PAIR = 0xFE
@@ -37,14 +33,6 @@ CMD_STATUS = 0xFA
 CMD_KB_PAIR = 0xF9
 
 TRANSPORT_NAMES = {0: "USB", 1: "BLE", 2: "2.4G", 3: "NONE"}
-
-
-def find_raw_hid_interface():
-    """Find the Raw HID interface (usage page 0xFF60)"""
-    for device in hid.enumerate(VENDOR_ID, PRODUCT_ID):
-        if device['usage_page'] == RAW_USAGE_PAGE:
-            return device['path']
-    return None
 
 
 def send_command(cmd, read_response=False):

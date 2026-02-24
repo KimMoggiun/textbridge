@@ -36,6 +36,9 @@ int zmk_ble_unpair_all();
 uint8_t zmk_ble_get_active_profile_bt_id(void);
 uint8_t zmk_ble_is_connected(void);
 
+/* TextBridge coordination: advertising state sync */
+void zmk_ble_notify_adv_stopped(void);
+
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
 int zmk_ble_put_peripheral_addr(const bt_addr_le_t *addr);
 #endif /* IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) */

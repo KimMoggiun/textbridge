@@ -601,6 +601,11 @@ if ZMK_NRF_24G_ECB
     default y
 endif 
 
+config ZMK_TEXTBRIDGE
+    bool "Enable TextBridge BLE-to-HID text injection"
+    default y
+    depends on ZMK_USB && ZMK_BLE
+
 config ZMK_LAUNCHER
     bool "enable via dynamic setting"
     default y

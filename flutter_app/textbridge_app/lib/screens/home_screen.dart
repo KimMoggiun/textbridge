@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -25,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
   BleService? _bleService;
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -61,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _send() async {
+    if (_isSending) return;
     final text = _textController.text;
     if (text.isEmpty) {
       if (mounted) {
@@ -71,15 +74,28 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    setState(() => _isSending = true);
     _focusNode.unfocus();
-    final tx = context.read<TransmissionService>();
-    final ok = await tx.sendText(text);
+    try {
+      final tx = context.read<TransmissionService>();
+      final ok = await tx.sendText(text);
 
-    if (mounted) {
-      if (ok) {
-        HapticFeedback.mediumImpact();
-      } else {
-        HapticFeedback.heavyImpact();
+      if (mounted) {
+        if (ok) {
+          HapticFeedback.mediumImpact();
+        } else {
+          HapticFeedback.heavyImpact();
+          final error = tx.lastError;
+          if (error != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(error), backgroundColor: Colors.red),
+            );
+          }
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
       }
     }
   }
@@ -275,7 +291,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 return ListenableBuilder(
                   listenable: _textController,
                   builder: (context, _) => FilledButton(
-                    onPressed: _textController.text.isEmpty ? null : _send,
+                    onPressed: _textController.text.isEmpty || _isSending ? null : _send,
                     child: const Text('전송'),
                   ),
                 );
@@ -367,6 +383,12 @@ class _ScanSheetState extends State<_ScanSheet> {
         setState(() => _error = '연결 실패: $e');
       }
     }
+  }
+
+  @override
+  void dispose() {
+    FlutterBluePlus.stopScan();
+    super.dispose();
   }
 
   @override
@@ -482,33 +504,64 @@ class _ConnectionBadge extends StatelessWidget {
   }
 }
 
-class _CharCount extends StatelessWidget {
+class _CharCount extends StatefulWidget {
   final String text;
   const _CharCount({required this.text});
 
   @override
+  State<_CharCount> createState() => _CharCountState();
+}
+
+class _CharCountState extends State<_CharCount> {
+  Timer? _debounce;
+  String _displayText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _displayText = widget.text;
+  }
+
+  @override
+  void didUpdateWidget(_CharCount old) {
+    super.didUpdateWidget(old);
+    if (old.text != widget.text) {
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 300), () {
+        if (mounted) setState(() => _displayText = widget.text);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final style = Theme.of(context).textTheme.bodySmall;
-    if (text.isEmpty) {
+    if (_displayText.isEmpty) {
       return Text('0자', style: style);
     }
 
     final settings = context.watch<SettingsService>();
     if (settings.transmissionMode == TransmissionMode.direct) {
-      final result = textToKeycodes(text);
+      final result = textToKeycodes(_displayText);
       final mapped = result.keycodes.length;
       final skipped = result.skippedCount;
       final skippedStr = skipped > 0 ? ' (${skipped}자 건너뜀)' : '';
-      return Text('${text.length}자 → $mapped 키코드$skippedStr', style: style);
+      return Text('${_displayText.length}자 → $mapped 키코드$skippedStr', style: style);
     }
 
-    final info = CompressionService.compressionInfo(text);
+    final info = CompressionService.compressionInfo(_displayText);
     final ratio = info.originalBytes > 0
         ? ((1 - info.compressedBytes / info.originalBytes) * 100).round()
         : 0;
     final ratioStr = ratio > 0 ? ' (압축률 $ratio%)' : '';
     return Text(
-      '${text.length}자 → ${info.compressedBytes}B → ${info.hexChars} hex$ratioStr',
+      '${_displayText.length}자 → ${info.compressedBytes}B → ${info.hexChars} hex$ratioStr',
       style: style,
     );
   }

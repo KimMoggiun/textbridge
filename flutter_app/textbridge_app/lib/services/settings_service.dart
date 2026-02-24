@@ -29,10 +29,10 @@ class SettingsService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
 
     _lastDeviceAddress = prefs.getString(_keyLastDeviceAddress);
-    _pressDelay = prefs.getInt(_keyPressDelay) ?? 1;
-    _releaseDelay = prefs.getInt(_keyReleaseDelay) ?? 1;
-    _comboDelay = prefs.getInt(_keyComboDelay) ?? 2;
-    _warmupDelay = prefs.getInt(_keyWarmupDelay) ?? 50;
+    _pressDelay = (prefs.getInt(_keyPressDelay) ?? 1).clamp(1, 255);
+    _releaseDelay = (prefs.getInt(_keyReleaseDelay) ?? 1).clamp(1, 255);
+    _comboDelay = (prefs.getInt(_keyComboDelay) ?? 2).clamp(1, 255);
+    _warmupDelay = (prefs.getInt(_keyWarmupDelay) ?? 50).clamp(1, 255);
     final modeStr = prefs.getString(_keyTransmissionMode);
     _transmissionMode = modeStr == 'direct'
         ? TransmissionMode.direct
