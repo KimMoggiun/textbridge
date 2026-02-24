@@ -53,7 +53,7 @@ RING_BUF_DECLARE(passkey_entries, PASSKEY_DIGITS);
 
 #endif /* IS_ENABLED(CONFIG_ZMK_BLE_PASSKEY_ENTRY) */
 
-#define ADV_RECONN_TIME_OUT (3000)//(3*60*1000)
+#define ADV_RECONN_TIME_OUT (10000)//(3*60*1000)
 #define ADV_PAIR_TIME_OUT (3*60*1000)
 #if EN_UPATE_PARAM_DYNAMIC  //disable for sometime send data fail!
 void ble_param_update_work_callback(struct k_work *work);
@@ -522,7 +522,13 @@ int update_advertising() {
     keyboad_led_set_onoff(0);
     if (desired_adv == ZMK_ADV_RECONN) {
         if (bond_check(profiles[active_profile].bt_id)) {
-            desired_adv = ZMK_ADV_DIR;
+            /* Use connectable advertising with accept list filter instead of
+             * directed advertising.  Directed adv (BT_LE_ADV_CONN_DIR) has a
+             * BLE-spec 1.28 s hard timeout, which is too short for phones
+             * scanning in the background (5-15 s interval).  Connectable adv
+             * with accept list filtering keeps the same security (only the
+             * bonded peer can connect) while respecting ADV_RECONN_TIME_OUT. */
+            desired_adv = ZMK_ADV_CONN;
             enable_filter = setup_accept_list();
             blue_led_set_state( LED_PEER_STATE_RECONN);
         } else {
