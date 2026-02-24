@@ -31,24 +31,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
-      // Listen for disconnect-during-transmission
       _bleService = context.read<BleService>();
       _bleService!.addListener(_onBleStateChanged);
-      _tryAutoConnect();
+      _bleService!.autoConnectOrDiscover();
     });
-  }
-
-  Future<void> _tryAutoConnect() async {
-    final ble = context.read<BleService>();
-    if (ble.state.isConnected) return;
-    final results = await ble.scan(timeout: 3);
-    if (results.isNotEmpty && mounted) {
-      try {
-        await ble.connect(results.first.device);
-      } catch (_) {
-        // Auto-connect is best-effort; user can manually connect
-      }
-    }
   }
 
   void _onBleStateChanged() {
@@ -105,8 +91,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _focusNode.unfocus();
     final ble = context.read<BleService>();
 
-    // If already connected, show disconnect option
     if (ble.state.isConnected) {
+      // Connected: show disconnect option
       final disconnect = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -124,7 +110,39 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // Show scan bottom sheet
+    if (ble.state == TbConnectionState.disconnected ||
+        ble.state == TbConnectionState.reconnecting) {
+      // Registered but not connected: show reconnect dialog
+      final action = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('연결 대기 중'),
+          content: const Text('자동 재연결을 시도하고 있습니다.\n기기 전원과 블루투스를 확인하세요.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'retry'),
+              child: const Text('재시도'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'unregister'),
+              child: const Text('기기 등록 해제'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('닫기'),
+            ),
+          ],
+        ),
+      );
+      if (action == 'retry') {
+        ble.autoConnectOrDiscover();
+      } else if (action == 'unregister') {
+        await ble.unregisterDevice();
+      }
+      return;
+    }
+
+    // Unregistered: show scan sheet for first registration
     if (!mounted) return;
     await showModalBottomSheet(
       context: context,
@@ -241,10 +259,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const Text('중지'),
                   );
                 }
-                if (!ble.state.isConnected) {
+                if (ble.state == TbConnectionState.unregistered) {
                   return FilledButton(
                     onPressed: _showConnectionSheet,
-                    child: const Text('연결하여 전송'),
+                    child: const Text('기기 등록'),
+                  );
+                }
+                if (!ble.state.isConnected) {
+                  return FilledButton(
+                    onPressed: null,
+                    child: Text(ble.state.label),
                   );
                 }
                 return ListenableBuilder(
@@ -359,7 +383,7 @@ class _ScanSheetState extends State<_ScanSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    _scanning ? '검색 중...' : '기기 선택',
+                    _scanning ? '검색 중...' : '기기 등록',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -428,11 +452,28 @@ class _ConnectionBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final connected = state.isConnected;
+    Color dotColor;
+    switch (state) {
+      case TbConnectionState.unregistered:
+        dotColor = Colors.grey;
+        break;
+      case TbConnectionState.disconnected:
+        dotColor = Colors.red;
+        break;
+      case TbConnectionState.connecting:
+      case TbConnectionState.reconnecting:
+      case TbConnectionState.scanning:
+        dotColor = Colors.orange;
+        break;
+      case TbConnectionState.connected:
+      case TbConnectionState.transmitting:
+        dotColor = Colors.green;
+        break;
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Chip(
-        avatar: Icon(Icons.circle, size: 10, color: connected ? Colors.green : Colors.grey),
+        avatar: Icon(Icons.circle, size: 10, color: dotColor),
         label: Text(state.label, style: const TextStyle(fontSize: 12)),
         visualDensity: VisualDensity.compact,
       ),

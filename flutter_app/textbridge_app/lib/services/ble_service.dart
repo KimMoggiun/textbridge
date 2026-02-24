@@ -23,9 +23,14 @@ class BleService extends ChangeNotifier {
 
   int get mtu => _mtu;
   String get deviceName => _device?.platformName ?? '';
+  String? get registeredDeviceId => _settings?.lastDeviceAddress;
 
   bool _wasTransmitting = false;
   bool get disconnectedDuringTransmission => _wasTransmitting;
+
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  static const _maxReconnectAttempts = 10;
 
   final _responseController = StreamController<Uint8List>.broadcast();
   Stream<Uint8List> get responses => _responseController.stream;
@@ -35,24 +40,59 @@ class BleService extends ChangeNotifier {
     _settings = settings;
   }
 
-  /// Attempt to reconnect to the last known device.
-  Future<bool> tryAutoConnect() async {
-    final address = _settings?.lastDeviceAddress;
-    if (address == null) return false;
-
-    try {
-      final device = BluetoothDevice.fromId(address);
-      await connect(device);
-      return state.isConnected;
-    } catch (_) {
-      return false;
-    }
-  }
-
   /// Update connection state. Used by TransmissionService during send.
   void setState(TbConnectionState s) {
     _state = s;
     notifyListeners();
+  }
+
+  /// Try OS-level auto-connect, then bonded devices, then saved ID.
+  /// Falls back to unregistered state if no saved device.
+  Future<void> autoConnectOrDiscover() async {
+    final savedId = _settings?.lastDeviceAddress;
+    if (savedId == null) {
+      setState(TbConnectionState.unregistered);
+      return;
+    }
+
+    setState(TbConnectionState.connecting);
+
+    // 1. Check if OS already connected this device
+    try {
+      final sysDevices = await FlutterBluePlus.systemDevices([Guid(tbServiceUuid)]);
+      for (final d in sysDevices) {
+        if (d.remoteId.str == savedId) {
+          await _connectAndDiscover(d, autoConnect: false);
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('[TB-BLE] systemDevices failed: $e');
+    }
+
+    // 2. Android: check bonded devices
+    if (Platform.isAndroid) {
+      try {
+        final bonded = await FlutterBluePlus.bondedDevices;
+        for (final d in bonded) {
+          if (d.remoteId.str == savedId) {
+            await _connectAndDiscover(d, autoConnect: true);
+            return;
+          }
+        }
+      } catch (e) {
+        debugPrint('[TB-BLE] bondedDevices failed: $e');
+      }
+    }
+
+    // 3. Connect by saved ID with autoConnect (OS manages connection)
+    try {
+      final device = BluetoothDevice.fromId(savedId);
+      await _connectAndDiscover(device, autoConnect: true);
+    } catch (e) {
+      debugPrint('[TB-BLE] autoConnect failed: $e');
+      setState(TbConnectionState.disconnected);
+    }
   }
 
   /// Scan for TextBridge devices for [timeout] seconds.
@@ -93,10 +133,17 @@ class BleService extends ChangeNotifier {
   }
 
   /// Connect to a specific device and discover TextBridge service.
-  Future<void> connect(BluetoothDevice device) async {
+  Future<void> connect(BluetoothDevice device, {bool autoConnect = false}) async {
     setState(TbConnectionState.connecting);
+    await _connectAndDiscover(device, autoConnect: autoConnect);
+  }
+
+  Future<void> _connectAndDiscover(BluetoothDevice device, {required bool autoConnect}) async {
     try {
-      await device.connect(autoConnect: false, timeout: const Duration(seconds: 10));
+      await device.connect(
+        autoConnect: autoConnect,
+        timeout: autoConnect ? const Duration(seconds: 30) : const Duration(seconds: 10),
+      );
       _device = device;
 
       // Listen for disconnection
@@ -104,7 +151,7 @@ class BleService extends ChangeNotifier {
         if (s == BluetoothConnectionState.disconnected) {
           _wasTransmitting = _state == TbConnectionState.transmitting;
           _cleanup();
-          setState(TbConnectionState.disconnected);
+          _onDisconnect();
         }
       });
 
@@ -152,13 +199,72 @@ class BleService extends ChangeNotifier {
         _responseController.add(Uint8List.fromList(value));
       });
 
+      _reconnectAttempts = 0;
+      _reconnectTimer?.cancel();
       setState(TbConnectionState.connected);
       _settings?.setLastDeviceAddress(device.remoteId.str);
     } catch (e) {
       _cleanup();
-      setState(TbConnectionState.disconnected);
+      // Don't reset to unregistered on connect failure if we have a saved device
+      if (_settings?.lastDeviceAddress != null) {
+        setState(TbConnectionState.disconnected);
+      } else {
+        setState(TbConnectionState.unregistered);
+      }
       rethrow;
     }
+  }
+
+  void _onDisconnect() {
+    final savedId = _settings?.lastDeviceAddress;
+    if (savedId != null) {
+      setState(TbConnectionState.reconnecting);
+      _startReconnectLoop();
+    } else {
+      setState(TbConnectionState.unregistered);
+    }
+  }
+
+  void _startReconnectLoop() {
+    _reconnectAttempts = 0;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (_state == TbConnectionState.connected ||
+          _state == TbConnectionState.transmitting) {
+        _reconnectTimer?.cancel();
+        return;
+      }
+
+      _reconnectAttempts++;
+      if (_reconnectAttempts > _maxReconnectAttempts) {
+        _reconnectTimer?.cancel();
+        setState(TbConnectionState.disconnected);
+        return;
+      }
+
+      final savedId = _settings?.lastDeviceAddress;
+      if (savedId == null) {
+        _reconnectTimer?.cancel();
+        setState(TbConnectionState.unregistered);
+        return;
+      }
+
+      try {
+        final device = BluetoothDevice.fromId(savedId);
+        await _connectAndDiscover(device, autoConnect: true);
+      } catch (_) {
+        // Will retry on next timer tick
+      }
+    });
+  }
+
+  /// Unregister the saved device. Clears saved address and disconnects.
+  Future<void> unregisterDevice() async {
+    _reconnectTimer?.cancel();
+    await _settings?.setLastDeviceAddress(null);
+    await _device?.disconnect();
+    _cleanup();
+    setState(TbConnectionState.unregistered);
   }
 
   /// Write data to the TX characteristic (Write Without Response).
@@ -169,9 +275,14 @@ class BleService extends ChangeNotifier {
 
   /// Disconnect from the current device.
   Future<void> disconnect() async {
+    _reconnectTimer?.cancel();
     await _device?.disconnect();
     _cleanup();
-    setState(TbConnectionState.disconnected);
+    if (_settings?.lastDeviceAddress != null) {
+      setState(TbConnectionState.disconnected);
+    } else {
+      setState(TbConnectionState.unregistered);
+    }
   }
 
   void _cleanup() {
@@ -186,6 +297,7 @@ class BleService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _reconnectTimer?.cancel();
     _cleanup();
     _responseController.close();
     super.dispose();

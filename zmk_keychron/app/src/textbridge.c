@@ -510,6 +510,8 @@ static int tb_start_pairing_adv(void)
         return 0;
     }
 
+    bt_set_name(TB_DEVICE_NAME);
+
     /* 단일 광고 슬롯: ZMK 광고가 잔존할 수 있으므로 정리 후 시작.
      * bt_le_adv_stop()은 idempotent (광고 없으면 no-op). */
     bt_le_adv_stop();
@@ -543,6 +545,8 @@ static int tb_start_reconnect_adv(void)
         return 0;
     }
 
+    bt_set_name(TB_DEVICE_NAME);
+
     bt_le_adv_stop();
     extern void zmk_ble_notify_adv_stopped(void);
     zmk_ble_notify_adv_stopped();
@@ -575,6 +579,7 @@ static void tb_stop_advertising(void)
     }
     bt_le_adv_stop();
     tb_advertising = false;
+    bt_set_name(CONFIG_BT_DEVICE_NAME);
     LOG_INF("TextBridge advertising stopped");
 }
 
@@ -654,11 +659,14 @@ static void tb_disconnected(struct bt_conn *conn, uint8_t reason)
     tb_conn = NULL;
     tb_notify_enabled = false;
 
-    /* Auto-reconnect: if USB mode and bonded, re-advertise to peer */
+    /* Auto-reconnect: if USB mode and bonded, re-advertise to peer.
+     * bt_set_name stays as "TextBridge" since reconnect adv will set it. */
     extern uint8_t get_current_transport(void);
     if (get_current_transport() == ZMK_TRANSPORT_USB && tb_bonded) {
         tb_pairing_mode = false;
         tb_start_reconnect_adv();
+    } else {
+        bt_set_name(CONFIG_BT_DEVICE_NAME);
     }
 }
 

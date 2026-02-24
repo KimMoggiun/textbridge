@@ -111,6 +111,46 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
+          Consumer2<BleService, SettingsService>(
+            builder: (ctx, ble, settings, child) {
+              final savedId = settings.lastDeviceAddress;
+              return _Section(
+                title: '등록된 기기',
+                children: [
+                  if (savedId != null) ...[
+                    _InfoTile('기기 이름', ble.deviceName.isEmpty ? 'TextBridge' : ble.deviceName),
+                    _InfoTile('기기 ID', savedId),
+                    ListTile(
+                      leading: const Icon(Icons.link_off, color: Colors.red),
+                      title: const Text('기기 등록 해제'),
+                      subtitle: const Text('저장된 기기 정보를 삭제합니다'),
+                      onTap: () async {
+                        final confirm = await showDialog<bool>(
+                          context: ctx,
+                          builder: (dlg) => AlertDialog(
+                            title: const Text('기기 등록 해제'),
+                            content: const Text('등록된 기기를 해제하시겠습니까?\n다시 스캔하여 등록해야 합니다.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(dlg, false), child: const Text('취소')),
+                              TextButton(onPressed: () => Navigator.pop(dlg, true), child: const Text('해제')),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          await ble.unregisterDevice();
+                        }
+                      },
+                    ),
+                  ] else
+                    const ListTile(
+                      leading: Icon(Icons.info_outline),
+                      title: Text('등록된 기기 없음'),
+                      subtitle: Text('홈 화면에서 기기를 등록하세요'),
+                    ),
+                ],
+              );
+            },
+          ),
           _Section(
             title: '정보',
             children: const [
