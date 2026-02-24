@@ -34,7 +34,21 @@ class _HomeScreenState extends State<HomeScreen> {
       // Listen for disconnect-during-transmission
       _bleService = context.read<BleService>();
       _bleService!.addListener(_onBleStateChanged);
+      _tryAutoConnect();
     });
+  }
+
+  Future<void> _tryAutoConnect() async {
+    final ble = context.read<BleService>();
+    if (ble.state.isConnected) return;
+    final results = await ble.scan(timeout: 3);
+    if (results.isNotEmpty && mounted) {
+      try {
+        await ble.connect(results.first.device);
+      } catch (_) {
+        // Auto-connect is best-effort; user can manually connect
+      }
+    }
   }
 
   void _onBleStateChanged() {

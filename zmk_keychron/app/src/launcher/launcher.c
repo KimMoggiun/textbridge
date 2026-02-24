@@ -801,6 +801,11 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
     case id_bootloader_jump:
         sys_reboot(0x57);  // 0x57 = UF2 bootloader (NRF52BOOT)
         break;
+    case 0xFD: {
+        /* Soft reset (same as power cycle) */
+        sys_reboot(0);
+        break;
+    }
     case 0xFE: {
         extern int zmk_textbridge_pair_start(void);
         zmk_textbridge_pair_start();

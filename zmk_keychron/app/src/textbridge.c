@@ -65,6 +65,12 @@ static struct bt_uuid_128 tb_rx_uuid   = BT_UUID_INIT_128(TB_UUID(0x12340002));
 /* ---------- State ---------- */
 static struct bt_conn *tb_conn;
 static bool tb_notify_enabled;
+static bool tb_advertising;
+static bool tb_bonded;              /* bonded device exists */
+static bt_addr_le_t tb_bonded_addr; /* bonded device identity address */
+static bool tb_bonded_is_rpa;       /* bonded peer uses RPA */
+static bool tb_pairing_mode;        /* true=pairing(discoverable), false=reconnect */
+static bool tb_ble_ready;
 
 /* Protocol state */
 static volatile bool tb_transmitting;
@@ -95,6 +101,8 @@ static ssize_t tb_tx_write_cb(struct bt_conn *conn,
                                uint16_t offset, uint8_t flags);
 static void tb_rx_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value);
 static void tb_stop_advertising(void);
+static int tb_start_reconnect_adv(void);
+static int tb_start_pairing_adv(void);
 
 /* ---------- GATT service definition ---------- */
 /*
@@ -443,7 +451,18 @@ ZMK_SUBSCRIPTION(tb_key_blocker, zmk_position_state_changed);
 static int tb_endpoint_listener(const zmk_event_t *eh)
 {
     const struct zmk_endpoint_changed *ev = as_zmk_endpoint_changed(eh);
-    if (ev && ev->endpoint.transport != ZMK_TRANSPORT_USB) {
+    if (!ev) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
+    if (ev->endpoint.transport == ZMK_TRANSPORT_USB) {
+        /* USB mode → auto-reconnect to bonded phone */
+        if (tb_bonded && !tb_conn && !tb_advertising && tb_ble_ready) {
+            tb_pairing_mode = false;
+            tb_start_reconnect_adv();
+        }
+    } else {
+        /* BLE mode → shut down TextBridge */
         LOG_INF("TB endpoint switched away from USB, shutting down");
         tb_cancel_session_timer();
         if (tb_transmitting || tb_injecting) {
@@ -484,9 +503,7 @@ static const struct bt_data tb_sd[] = {
     BT_DATA(BT_DATA_UUID128_ALL, tb_svc_uuid_bytes, sizeof(tb_svc_uuid_bytes)),
 };
 
-static bool tb_advertising;
-
-static int tb_start_advertising(void)
+static int tb_start_pairing_adv(void)
 {
     if (tb_advertising) {
         LOG_INF("TextBridge already advertising");
@@ -515,6 +532,42 @@ static int tb_start_advertising(void)
     return 0;
 }
 
+/* Reconnect mode: directed advertising to bonded peer only */
+static int tb_start_reconnect_adv(void)
+{
+    if (!tb_bonded) {
+        return -ENOENT;
+    }
+
+    if (tb_advertising) {
+        return 0;
+    }
+
+    bt_le_adv_stop();
+    extern void zmk_ble_notify_adv_stopped(void);
+    zmk_ble_notify_adv_stopped();
+
+    struct bt_le_adv_param adv_param = *BT_LE_ADV_CONN_DIR(&tb_bonded_addr);
+    adv_param.id = BT_ID_DEFAULT;
+
+    /* RPA peer needs DIR_ADDR_RPA (same pattern as ble.c checked_dir_adv) */
+    if (tb_bonded_is_rpa) {
+        adv_param.options |= BT_LE_ADV_OPT_DIR_ADDR_RPA;
+    }
+    adv_param.options |= BT_LE_ADV_OPT_USE_IDENTITY;
+
+    int err = bt_le_adv_start(&adv_param, NULL, 0, NULL, 0);
+    if (err) {
+        LOG_WRN("TB reconnect adv failed (err %d), falling back to pairing", err);
+        /* Directed adv timeout (1.28s) or other failure → discoverable fallback */
+        return tb_start_pairing_adv();
+    }
+
+    tb_advertising = true;
+    LOG_INF("TB: reconnect advertising to bonded peer");
+    return 0;
+}
+
 static void tb_stop_advertising(void)
 {
     if (!tb_advertising) {
@@ -532,6 +585,12 @@ static void tb_connected(struct bt_conn *conn, uint8_t err)
 
     if (err) {
         LOG_ERR("TextBridge connection failed (err %d)", err);
+        /* Directed adv timeout arrives as err=BT_HCI_ERR_ADV_TIMEOUT.
+         * Fall back to discoverable advertising so phone can still find us. */
+        if (tb_bonded && !tb_conn) {
+            tb_advertising = false;
+            tb_start_pairing_adv();
+        }
         return;
     }
 
@@ -561,6 +620,17 @@ static void tb_connected(struct bt_conn *conn, uint8_t err)
     }
     tb_conn = bt_conn_ref(conn);
     tb_advertising = false;
+
+    if (tb_pairing_mode) {
+        /* Pairing mode: trigger SMP bonding */
+        int ret = bt_conn_set_security(conn, BT_SECURITY_L2);
+        if (ret) {
+            LOG_ERR("TB: set_security failed (%d)", ret);
+        }
+    } else if (tb_bonded) {
+        /* Reconnect mode: re-establish encryption with stored LTK */
+        bt_conn_set_security(conn, BT_SECURITY_L2);
+    }
 }
 
 static void tb_disconnected(struct bt_conn *conn, uint8_t reason)
@@ -583,16 +653,67 @@ static void tb_disconnected(struct bt_conn *conn, uint8_t reason)
     bt_conn_unref(tb_conn);
     tb_conn = NULL;
     tb_notify_enabled = false;
+
+    /* Auto-reconnect: if USB mode and bonded, re-advertise to peer */
+    extern uint8_t get_current_transport(void);
+    if (get_current_transport() == ZMK_TRANSPORT_USB && tb_bonded) {
+        tb_pairing_mode = false;
+        tb_start_reconnect_adv();
+    }
+}
+
+static void tb_security_changed(struct bt_conn *conn, bt_security_t level,
+                                 enum bt_security_err err)
+{
+    if (conn != tb_conn) {
+        return;
+    }
+
+    if (err) {
+        LOG_WRN("TB security err %d (pairing=%d)", err, tb_pairing_mode);
+        if (!tb_pairing_mode) {
+            /* Reconnect mode: key mismatch → disconnect */
+            bt_conn_disconnect(conn, BT_HCI_ERR_AUTH_FAIL);
+        }
+        /* Pairing mode: central may have stale cached keys.
+         * Don't disconnect — GATT works without encryption. */
+        return;
+    }
+
+    if (level >= BT_SECURITY_L2) {
+        const bt_addr_le_t *addr = bt_conn_get_dst(conn);
+        bt_addr_le_copy(&tb_bonded_addr, addr);
+        tb_bonded = true;
+        tb_bonded_is_rpa = bt_addr_le_is_rpa(addr);
+        tb_pairing_mode = false;
+
+        char addr_str[BT_ADDR_LE_STR_LEN];
+        bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+        LOG_INF("TB: bonded to %s (rpa=%d)", addr_str, tb_bonded_is_rpa);
+    }
 }
 
 BT_CONN_CB_DEFINE(tb_conn_cb) = {
     .connected = tb_connected,
     .disconnected = tb_disconnected,
+    .security_changed = tb_security_changed,
 };
 
-/* ---------- BLE enable (deferred work) ---------- */
-static bool tb_ble_ready;
+/* ---------- Boot-time bond detection ---------- */
+static void tb_bond_found_cb(const struct bt_bond_info *info, void *data)
+{
+    bool *found = data;
+    if (!(*found)) {
+        bt_addr_le_copy(&tb_bonded_addr, &info->addr);
+        tb_bonded = true;
+        *found = true;
+        char addr[BT_ADDR_LE_STR_LEN];
+        bt_addr_le_to_str(&info->addr, addr, sizeof(addr));
+        LOG_INF("TB: found bonded peer %s", addr);
+    }
+}
 
+/* ---------- BLE enable (deferred work) ---------- */
 static void tb_bt_enable_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(tb_bt_enable_work, tb_bt_enable_work_handler);
 
@@ -610,8 +731,19 @@ static void tb_bt_enable_work_handler(struct k_work *work)
     settings_subsys_init();
     settings_load_subtree("bt");
 
+    /* Check for existing bond on identity 0 */
+    bool found = false;
+    bt_foreach_bond(BT_ID_DEFAULT, tb_bond_found_cb, &found);
+
     tb_ble_ready = true;
-    LOG_INF("TextBridge: BLE stack ready");
+    LOG_INF("TextBridge: BLE stack ready (bonded=%d)", tb_bonded);
+
+    /* If bonded and already in USB mode, start reconnect advertising */
+    extern uint8_t get_current_transport(void);
+    if (tb_bonded && get_current_transport() == ZMK_TRANSPORT_USB) {
+        tb_pairing_mode = false;
+        tb_start_reconnect_adv();
+    }
 }
 
 /* ---------- Public API ---------- */
@@ -635,8 +767,13 @@ int zmk_textbridge_pair_start(void)
         /* tb_disconnected callback will unref and set tb_conn = NULL */
     }
 
+    /* No bt_unpair: macOS/iOS caches bond keys persistently.
+     * Removing only firmware-side keys causes "Peer removed pairing
+     * information" (CBErrorDomain Code=14). SMP_ALLOW_UNAUTH_OVERWRITE
+     * lets new pairing naturally overwrite old bonds on both sides. */
+    tb_pairing_mode = true;
     tb_stop_advertising();
-    return tb_start_advertising();
+    return tb_start_pairing_adv();
 }
 
 /* ---------- Initialization ---------- */
