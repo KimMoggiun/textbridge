@@ -75,6 +75,7 @@ python3 tb_mode.py status   # 상태 조회
 python3 tb_mode.py usb      # USB 모드 전환
 python3 tb_mode.py ble      # BLE 모드 전환
 python3 tb_mode.py pair     # TextBridge 페어링 시작 (= tb_pair.py)
+python3 tb_mode.py kbpair   # 키보드 BLE 페어링 시작 (= Fn+1 길게)
 ```
 
 ### VIA 명령 바이트
@@ -83,18 +84,23 @@ python3 tb_mode.py pair     # TextBridge 페어링 시작 (= tb_pair.py)
 |------|--------|------|-------------------|
 | `0xFC` | `[0xFC]` | USB 모드 전환 | `[transport]` (0=USB) |
 | `0xFB` | `[0xFB]` | BLE 모드 전환 | `[transport]` (1=BLE) |
-| `0xFA` | `[0xFA]` | 상태 조회 | `[transport, advertising, connected, bonded]` |
-| `0xFE` | `[0xFE]` | 페어링 시작 | (응답 없음) |
+| `0xFA` | `[0xFA]` | 상태 조회 | `[transport, tb_adv, tb_conn, tb_bonded, zmk_adv, zmk_conn]` |
+| `0xF9` | `[0xF9]` | KB BLE 페어링 시작 | (응답 없음, Fn+1 길게와 동일) |
+| `0xFE` | `[0xFE]` | TB 페어링 시작 | (응답 없음) |
 | `0xFD` | `[0xFD]` | 소프트 리셋 | (MCU 재부팅) |
 | `0x0B` | `[0x0B]` | DFU 진입 | (부트로더 진입) |
+
+`zmk_adv` 값: 0=NONE, 1=DIR, 2=CONN, 3=RECONN, 4=PAIR
 
 ### status 출력 예시
 
 ```
 transport   = USB (0)
-advertising = False (0)
-connected   = True (1)
-bonded      = True (1)
+tb_adv      = False (0)
+tb_conn     = True (1)
+tb_bonded   = True (1)
+zmk_adv     = NONE (0)
+zmk_conn    = False (0)
 ```
 
 ### 모드 전환 동작
@@ -139,9 +145,12 @@ python3 test_app_bridge.py --test all            # BLE 전송 테스트
 |------|------|
 | `enter_dfu.py` | VIA Raw HID로 DFU 부트로더 진입 |
 | `tb_pair.py` | VIA Raw HID로 BLE 광고 시작 (디버깅용) |
-| `tb_mode.py` | 모드 전환(usb/ble) + 상태 조회(status) + 페어링(pair) |
+| `tb_mode.py` | 모드 전환(usb/ble) + 상태 조회(status) + 페어링(pair/kbpair) |
 | `test_phase2_ble.py` | BLE GATT 연결/서비스/특성 테스트 |
 | `test_auto_reconnect.py` | 모드 전환 기반 자동 재연결 E2E 테스트 (10단계) |
+| `test_disconnect_proof.py` | 모드 전환 시 BLE disconnect 증명 (100ms 폴링) |
+| `test_reconnect_timing.py` | 모드 전환 후 재연결 타이밍 측정 (VIA 폴링 + BLE 스캔) |
+| `test_reconnect_real.py` | 실제 환경 재현 재연결 테스트 (명시적 disconnect 후 재연결) |
 
 ## HID 출력 검증 방법 (Claude Code 터미널 활용)
 
