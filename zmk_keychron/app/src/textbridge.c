@@ -536,24 +536,68 @@ static int tb_start_pairing_adv(void)
     return 0;
 }
 
-/* Reconnect mode: force-restart discoverable advertising.
- * Always stop + restart to avoid stale tb_advertising flag desync
- * (ZMK's adv_timeout_work can call bt_le_adv_stop() without clearing
- * our flag, leaving us thinking we're advertising when the radio is off). */
+/* Advertising timeout for reconnect mode */
+#define TB_RECONN_ADV_TIMEOUT_MS 5000
+
+static void tb_adv_timeout_handler(struct k_work *work);
+K_WORK_DELAYABLE_DEFINE(tb_adv_timeout_work, tb_adv_timeout_handler);
+
+static void tb_adv_timeout_handler(struct k_work *work)
+{
+    if (tb_advertising && !tb_conn) {
+        LOG_INF("TextBridge reconnect adv timeout (%d ms)", TB_RECONN_ADV_TIMEOUT_MS);
+        tb_stop_advertising();
+    }
+}
+
+/* Reconnect mode: whitelist-filtered advertising to bonded peer only.
+ * Uses accept list + 5-second timeout for power efficiency.
+ * Always force-restart to avoid stale tb_advertising flag desync. */
 static int tb_start_reconnect_adv(void)
 {
     if (!tb_bonded) {
         return -ENOENT;
     }
 
-    /* Force-restart: clear flag so tb_start_pairing_adv() doesn't
-     * short-circuit, then do a clean stop + start cycle. */
     tb_stop_advertising();
-    return tb_start_pairing_adv();
+
+    bt_set_name(TB_DEVICE_NAME);
+    bt_le_adv_stop();
+    extern void zmk_ble_notify_adv_stopped(void);
+    zmk_ble_notify_adv_stopped();
+
+    /* Populate accept list with bonded peer */
+    bt_le_filter_accept_list_clear();
+    int err = bt_le_filter_accept_list_add(&tb_bonded_addr);
+    if (err) {
+        LOG_ERR("TB accept list add failed (err %d)", err);
+        /* Fall through — try unfiltered as fallback */
+    }
+
+    struct bt_le_adv_param adv_param = *BT_LE_ADV_CONN;
+    adv_param.id = BT_ID_DEFAULT;
+    adv_param.options |= BT_LE_ADV_OPT_USE_IDENTITY;
+    if (!err) {
+        adv_param.options |= BT_LE_ADV_OPT_FILTER_SCAN_REQ;
+        adv_param.options |= BT_LE_ADV_OPT_FILTER_CONN;
+    }
+
+    err = bt_le_adv_start(&adv_param, tb_ad, ARRAY_SIZE(tb_ad),
+                           tb_sd, ARRAY_SIZE(tb_sd));
+    if (err) {
+        LOG_ERR("TextBridge reconnect adv failed (err %d)", err);
+        return err;
+    }
+
+    tb_advertising = true;
+    k_work_reschedule(&tb_adv_timeout_work, K_MSEC(TB_RECONN_ADV_TIMEOUT_MS));
+    LOG_INF("TextBridge reconnect adv (whitelist, %d ms timeout)", TB_RECONN_ADV_TIMEOUT_MS);
+    return 0;
 }
 
 static void tb_stop_advertising(void)
 {
+    k_work_cancel_delayable(&tb_adv_timeout_work);
     if (!tb_advertising) {
         return;
     }
@@ -759,7 +803,14 @@ int zmk_textbridge_pair_start(void)
             tb_cleanup_transmission();
         }
         bt_conn_disconnect(tb_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-        /* tb_disconnected callback will unref and set tb_conn = NULL */
+        /* Wait for async disconnect callback */
+        k_sleep(K_MSEC(500));
+        if (tb_conn) {
+            LOG_WRN("TextBridge: force-clearing stale connection");
+            bt_conn_unref(tb_conn);
+            tb_conn = NULL;
+            tb_notify_enabled = false;
+        }
     }
 
     /* No bt_unpair: macOS/iOS caches bond keys persistently.

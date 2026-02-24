@@ -60,10 +60,48 @@ west build --pristine -b keychron -- -DSHIELD=keychron_b6_us
 ## DFU 진입 + 플래시
 
 ```bash
-python3 enter_dfu.py && sleep 3 && cp ~/project/textbridge/zmk_keychron/app/build/zephyr/zmk.uf2 /Volumes/NRF52BOOT/
+python3 enter_dfu.py && sleep 4 && cp ~/project/textbridge/zmk_keychron/app/build/zephyr/zmk.uf2 /Volumes/NRF52BOOT/
 ```
 
 수동 DFU: 키보드 ESC 누른 채 USB 연결.
+
+## 모드 전환 + 상태 조회 (tb_mode.py)
+
+VIA Raw HID로 USB↔BLE 모드 전환 및 TextBridge 상태를 원격 조회한다.
+키보드는 항상 USB 케이블로 연결되어 있어야 한다 (VIA는 USB 경유).
+
+```bash
+python3 tb_mode.py status   # 상태 조회
+python3 tb_mode.py usb      # USB 모드 전환
+python3 tb_mode.py ble      # BLE 모드 전환
+python3 tb_mode.py pair     # TextBridge 페어링 시작 (= tb_pair.py)
+```
+
+### VIA 명령 바이트
+
+| 명령 | 바이트 | 동작 | 응답 `data[1..]` |
+|------|--------|------|-------------------|
+| `0xFC` | `[0xFC]` | USB 모드 전환 | `[transport]` (0=USB) |
+| `0xFB` | `[0xFB]` | BLE 모드 전환 | `[transport]` (1=BLE) |
+| `0xFA` | `[0xFA]` | 상태 조회 | `[transport, advertising, connected, bonded]` |
+| `0xFE` | `[0xFE]` | 페어링 시작 | (응답 없음) |
+| `0xFD` | `[0xFD]` | 소프트 리셋 | (MCU 재부팅) |
+| `0x0B` | `[0x0B]` | DFU 진입 | (부트로더 진입) |
+
+### status 출력 예시
+
+```
+transport   = USB (0)
+advertising = False (0)
+connected   = True (1)
+bonded      = True (1)
+```
+
+### 모드 전환 동작
+
+- **USB → BLE**: TextBridge 연결 끊김 + 광고 중단. ZMK 키보드가 BLE HID로 전환.
+- **BLE → USB**: TextBridge가 본딩된 폰이 있으면 자동으로 재광고 시작.
+- 물리 USB 연결은 유지됨 — `zmk_endpoints_select_transport()`는 HID 보고 방향만 변경.
 
 ## 압축 전용 모드
 
@@ -101,7 +139,9 @@ python3 test_app_bridge.py --test all            # BLE 전송 테스트
 |------|------|
 | `enter_dfu.py` | VIA Raw HID로 DFU 부트로더 진입 |
 | `tb_pair.py` | VIA Raw HID로 BLE 광고 시작 (디버깅용) |
+| `tb_mode.py` | 모드 전환(usb/ble) + 상태 조회(status) + 페어링(pair) |
 | `test_phase2_ble.py` | BLE GATT 연결/서비스/특성 테스트 |
+| `test_auto_reconnect.py` | 모드 전환 기반 자동 재연결 E2E 테스트 (10단계) |
 
 ## HID 출력 검증 방법 (Claude Code 터미널 활용)
 

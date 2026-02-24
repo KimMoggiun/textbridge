@@ -34,6 +34,7 @@ CMD_TB_PAIR = 0xFE
 CMD_MODE_USB = 0xFC
 CMD_MODE_BLE = 0xFB
 CMD_STATUS = 0xFA
+CMD_KB_PAIR = 0xF9
 
 TRANSPORT_NAMES = {0: "USB", 1: "BLE", 2: "2.4G", 3: "NONE"}
 
@@ -118,16 +119,24 @@ def cmd_status():
         connected = resp[3] if len(resp) > 3 else -1
         bonded = resp[4] if len(resp) > 4 else -1
 
+        zmk_adv = resp[5] if len(resp) > 5 else -1
+        zmk_conn = resp[6] if len(resp) > 6 else -1
+
+        ZMK_ADV_NAMES = {0: "NONE", 1: "DIR", 2: "CONN", 3: "RECONN", 4: "PAIR"}
         t_name = TRANSPORT_NAMES.get(transport, f"unknown({transport})")
         print(f"  transport   = {t_name} ({transport})")
-        print(f"  advertising = {bool(advertising)} ({advertising})")
-        print(f"  connected   = {bool(connected)} ({connected})")
-        print(f"  bonded      = {bool(bonded)} ({bonded})")
+        print(f"  tb_adv      = {bool(advertising)} ({advertising})")
+        print(f"  tb_conn     = {bool(connected)} ({connected})")
+        print(f"  tb_bonded   = {bool(bonded)} ({bonded})")
+        print(f"  zmk_adv     = {ZMK_ADV_NAMES.get(zmk_adv, '?')} ({zmk_adv})")
+        print(f"  zmk_conn    = {bool(zmk_conn)} ({zmk_conn})")
         return {
             "transport": transport,
             "advertising": advertising,
             "connected": connected,
             "bonded": bonded,
+            "zmk_adv": zmk_adv,
+            "zmk_conn": zmk_conn,
         }
     print("  (no response)")
     return None
@@ -141,6 +150,14 @@ def cmd_pair():
     return True
 
 
+def cmd_kb_pair():
+    """Start keyboard BLE profile pairing (like Fn+1 long press)"""
+    print("Starting keyboard BLE pairing (profile 0)...")
+    send_command(CMD_KB_PAIR, read_response=False)
+    print("  Keyboard should be in BLE pairing mode")
+    return True
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python3 tb_mode.py <command>")
@@ -150,6 +167,7 @@ def main():
         print("  ble      Switch to BLE mode")
         print("  status   Query current state")
         print("  pair     Start TextBridge BLE pairing")
+        print("  kbpair   Start keyboard BLE pairing (Fn+1)")
         sys.exit(1)
 
     cmd = sys.argv[1].lower()
@@ -163,6 +181,8 @@ def main():
         success = result is not None
     elif cmd == "pair":
         success = cmd_pair()
+    elif cmd == "kbpair":
+        success = cmd_kb_pair()
     else:
         print(f"Unknown command: {cmd}")
         sys.exit(1)

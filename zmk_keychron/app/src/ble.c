@@ -43,6 +43,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zephyr/sys/reboot.h>
 #include <zmk/usb.h>
 #include <zmk/events/keycode_state_changed.h>
+#include <zmk/events/endpoint_changed.h>
 #include <zmk/keymap.h>
 #if IS_ENABLED(CONFIG_ZMK_BLE_PASSKEY_ENTRY)
 #define PASSKEY_DIGITS 6
@@ -346,6 +347,10 @@ void save_profile(uint8_t index) {
     char setting_name[20];
     sprintf(setting_name, "ble/profiles/%d", index);
     settings_save_one(setting_name, &profiles[index], sizeof(struct zmk_ble_profile));
+}
+
+uint8_t zmk_ble_get_adv_status(void) {
+    return (uint8_t)advertising_status;
 }
 
 bool zmk_ble_active_profile_is_connected() {
@@ -1417,8 +1422,19 @@ static int zmk_ble_handle_key_user(struct zmk_keycode_state_changed *event) {
 #endif /* IS_ENABLED(CONFIG_ZMK_BLE_PASSKEY_ENTRY) */
 
 static int zmk_ble_listener(const zmk_event_t *eh) {
+    /* Handle endpoint change: auto-advertise when switching to BLE mode */
+    const struct zmk_endpoint_changed *ep_ev = as_zmk_endpoint_changed(eh);
+    if (ep_ev != NULL) {
+        if (ep_ev->endpoint.transport == ZMK_TRANSPORT_BLE &&
+            !profiles[active_profile].connected) {
+            LOG_INF("BLE mode activated, starting advertising");
+            advertising_start();
+        }
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
+    /* Handle key press: re-advertise if BLE not connected */
     struct zmk_keycode_state_changed *kc_state;
-    
     kc_state = as_zmk_keycode_state_changed(eh);
 
     if ((kc_state != NULL) && !bat_is_shutdown()) {
@@ -1430,12 +1446,12 @@ static int zmk_ble_listener(const zmk_event_t *eh) {
                 {
                     advertising_start();
                 }
-#if EN_UPATE_PARAM_DYNAMIC                
+#if EN_UPATE_PARAM_DYNAMIC
                 else
                 {
                     ble_active_handler();
                 }
-#endif                 
+#endif
             }
             else if(get_current_transport()==ZMK_TRANSPORT_24G)
             {
@@ -1449,6 +1465,7 @@ static int zmk_ble_listener(const zmk_event_t *eh) {
 
 ZMK_LISTENER(zmk_ble, zmk_ble_listener);
 ZMK_SUBSCRIPTION(zmk_ble, zmk_keycode_state_changed);
+ZMK_SUBSCRIPTION(zmk_ble, zmk_endpoint_changed);
 
 
 // SYS_INIT(zmk_ble_init, APPLICATION, CONFIG_ZMK_BLE_INIT_PRIORITY);

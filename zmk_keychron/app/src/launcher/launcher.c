@@ -823,11 +823,23 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         command_data[0] = get_current_transport();
         break;
     }
+    case 0xF9: {
+        /* Start keyboard BLE profile pairing (like Fn+1 long press) */
+        extern int zmk_ble_prof_pair_start(uint8_t index);
+        zmk_ble_prof_pair_start(0);  /* profile 0 */
+        command_data[0] = 1;  /* OK */
+        break;
+    }
     case 0xFA: {
-        /* Query TextBridge state */
+        /* Query TextBridge + keyboard BLE state */
         extern void zmk_textbridge_get_status(uint8_t *, uint8_t *, uint8_t *);
         command_data[0] = get_current_transport();
         zmk_textbridge_get_status(&command_data[1], &command_data[2], &command_data[3]);
+        /* [4]=zmk_adv_status (0=NONE,1=DIR,2=CONN,3=RECONN,4=PAIR), [5]=profile_connected */
+        extern uint8_t zmk_ble_get_adv_status(void);
+        extern bool zmk_ble_active_profile_is_connected(void);
+        command_data[4] = zmk_ble_get_adv_status();
+        command_data[5] = zmk_ble_active_profile_is_connected() ? 1 : 0;
         break;
     }
     case kc_get_protocol_version:
