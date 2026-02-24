@@ -6,19 +6,22 @@ import 'services/settings_service.dart';
 import 'services/transmission_service.dart';
 import 'screens/home_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const TextBridgeApp());
+  final settings = SettingsService();
+  await settings.load();
+  runApp(TextBridgeApp(settings: settings));
 }
 
 class TextBridgeApp extends StatelessWidget {
-  const TextBridgeApp({super.key});
+  final SettingsService settings;
+  const TextBridgeApp({super.key, required this.settings});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => SettingsService()..load()),
+        ChangeNotifierProvider.value(value: settings),
         ChangeNotifierProvider(create: (_) => BleService()),
         ChangeNotifierProxyProvider<BleService, TransmissionService>(
           create: (ctx) => TransmissionService(

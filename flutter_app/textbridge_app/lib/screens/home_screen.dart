@@ -32,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
       _bleService = context.read<BleService>();
+      _bleService!.setSettingsService(context.read<SettingsService>());
       _bleService!.addListener(_onBleStateChanged);
       _bleService!.autoConnectOrDiscover();
     });

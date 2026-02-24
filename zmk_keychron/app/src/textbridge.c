@@ -456,8 +456,10 @@ static int tb_endpoint_listener(const zmk_event_t *eh)
     }
 
     if (ev->endpoint.transport == ZMK_TRANSPORT_USB) {
-        /* USB mode → auto-reconnect to bonded phone */
-        if (tb_bonded && !tb_conn && !tb_advertising && tb_ble_ready) {
+        /* USB mode → auto-reconnect to bonded phone.
+         * Always call tb_start_reconnect_adv() which does force stop+start,
+         * handling the case where tb_advertising flag is stale. */
+        if (tb_bonded && !tb_conn && tb_ble_ready) {
             tb_pairing_mode = false;
             tb_start_reconnect_adv();
         }
@@ -534,42 +536,20 @@ static int tb_start_pairing_adv(void)
     return 0;
 }
 
-/* Reconnect mode: directed advertising to bonded peer only */
+/* Reconnect mode: force-restart discoverable advertising.
+ * Always stop + restart to avoid stale tb_advertising flag desync
+ * (ZMK's adv_timeout_work can call bt_le_adv_stop() without clearing
+ * our flag, leaving us thinking we're advertising when the radio is off). */
 static int tb_start_reconnect_adv(void)
 {
     if (!tb_bonded) {
         return -ENOENT;
     }
 
-    if (tb_advertising) {
-        return 0;
-    }
-
-    bt_set_name(TB_DEVICE_NAME);
-
-    bt_le_adv_stop();
-    extern void zmk_ble_notify_adv_stopped(void);
-    zmk_ble_notify_adv_stopped();
-
-    struct bt_le_adv_param adv_param = *BT_LE_ADV_CONN_DIR(&tb_bonded_addr);
-    adv_param.id = BT_ID_DEFAULT;
-
-    /* RPA peer needs DIR_ADDR_RPA (same pattern as ble.c checked_dir_adv) */
-    if (tb_bonded_is_rpa) {
-        adv_param.options |= BT_LE_ADV_OPT_DIR_ADDR_RPA;
-    }
-    adv_param.options |= BT_LE_ADV_OPT_USE_IDENTITY;
-
-    int err = bt_le_adv_start(&adv_param, NULL, 0, NULL, 0);
-    if (err) {
-        LOG_WRN("TB reconnect adv failed (err %d), falling back to pairing", err);
-        /* Directed adv timeout (1.28s) or other failure → discoverable fallback */
-        return tb_start_pairing_adv();
-    }
-
-    tb_advertising = true;
-    LOG_INF("TB: reconnect advertising to bonded peer");
-    return 0;
+    /* Force-restart: clear flag so tb_start_pairing_adv() doesn't
+     * short-circuit, then do a clean stop + start cycle. */
+    tb_stop_advertising();
+    return tb_start_pairing_adv();
 }
 
 static void tb_stop_advertising(void)
@@ -755,6 +735,13 @@ static void tb_bt_enable_work_handler(struct k_work *work)
 }
 
 /* ---------- Public API ---------- */
+
+void zmk_textbridge_get_status(uint8_t *advertising, uint8_t *connected, uint8_t *bonded)
+{
+    *advertising = tb_advertising ? 1 : 0;
+    *connected = tb_conn ? 1 : 0;
+    *bonded = tb_bonded ? 1 : 0;
+}
 
 int zmk_textbridge_pair_start(void)
 {

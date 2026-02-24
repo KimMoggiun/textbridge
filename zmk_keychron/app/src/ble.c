@@ -935,8 +935,15 @@ static void connected(struct bt_conn *conn, uint8_t err) {
     char addr[BT_ADDR_LE_STR_LEN];
     struct bt_conn_info info;
 
+    bt_conn_get_info(conn, &info);
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
     LOG_DBG("Connected thread: %p,conn id:%d", k_current_get(), conn->id);
+
+    /* Identity 0 (TextBridge) is handled by textbridge.c — skip here. */
+    if (info.id == BT_ID_DEFAULT) {
+        return;
+    }
+
     if (err) {
         if (err == BT_HCI_ERR_ADV_TIMEOUT) {
             printk("Direct advertising to %s timed out\n", addr);
@@ -949,15 +956,9 @@ static void connected(struct bt_conn *conn, uint8_t err) {
         }
         return;
     }
-    bt_conn_get_info(conn, &info);
 
     if (info.role != BT_CONN_ROLE_PERIPHERAL) {
         LOG_DBG("SKIPPING FOR ROLE %d", info.role);
-        return;
-    }
-
-    /* Identity 0 (TextBridge) is handled by textbridge.c — skip here. */
-    if (info.id == BT_ID_DEFAULT) {
         return;
     }
 

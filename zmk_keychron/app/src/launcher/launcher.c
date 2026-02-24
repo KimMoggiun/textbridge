@@ -811,6 +811,25 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         zmk_textbridge_pair_start();
         break;
     }
+    case 0xFC: {
+        /* Force USB mode */
+        zmk_endpoints_select_transport(ZMK_TRANSPORT_USB);
+        command_data[0] = get_current_transport();
+        break;
+    }
+    case 0xFB: {
+        /* Force BLE mode */
+        zmk_endpoints_select_transport(ZMK_TRANSPORT_BLE);
+        command_data[0] = get_current_transport();
+        break;
+    }
+    case 0xFA: {
+        /* Query TextBridge state */
+        extern void zmk_textbridge_get_status(uint8_t *, uint8_t *, uint8_t *);
+        command_data[0] = get_current_transport();
+        zmk_textbridge_get_status(&command_data[1], &command_data[2], &command_data[3]);
+        break;
+    }
     case kc_get_protocol_version:
             command_data[0]=1;
         break;
