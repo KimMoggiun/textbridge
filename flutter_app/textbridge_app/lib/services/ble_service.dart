@@ -172,6 +172,10 @@ class BleService extends ChangeNotifier {
       // Request higher MTU (Android only; iOS negotiates automatically)
       if (Platform.isAndroid) {
         _mtu = await device.requestMtu(247);
+        // Request shortest connection interval (11.25ms) for fast HID injection
+        await device.requestConnectionPriority(
+          connectionPriorityRequest: ConnectionPriority.high,
+        );
       }
       // iOS negotiates MTU automatically during service discovery.
       // Re-read after discoverServices for accurate value.

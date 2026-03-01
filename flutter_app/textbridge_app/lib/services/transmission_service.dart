@@ -91,6 +91,14 @@ class TransmissionService extends ChangeNotifier {
     final chunkSize = chunkSizeFromMtu(_ble.mtu);
     final chunks = chunkKeycodes(keycodes, chunkSize);
 
+    debugPrint('[TB-DIAG] ===== TRANSMISSION DIAGNOSTICS =====');
+    debugPrint('[TB-DIAG] MTU=${_ble.mtu}, chunkSize=$chunkSize, totalChunks=${chunks.length}');
+    debugPrint('[TB-DIAG] totalKeycodes=${keycodes.length}, inputHexLen=${inputText.length}');
+    debugPrint('[TB-DIAG] delays: press=${pressMs}ms release=${releaseMs}ms combo=${comboMs}ms warmup=${warmupMs}ms');
+    debugPrint('[TB-DIAG] expected per-key: ${pressMs + releaseMs}ms (simple) / ${comboMs + releaseMs}ms (mod)');
+    debugPrint('[TB-DIAG] expected inject/chunk: ${chunkSize * (pressMs + releaseMs)}ms');
+    final totalStopwatch = Stopwatch()..start();
+
     _isTransmitting = true;
     _abortRequested = false;
     _lastError = null;
@@ -155,6 +163,8 @@ class TransmissionService extends ChangeNotifier {
 
       // 2. Send KEYCODE chunks
       var sentKeycodes = 0;
+      var totalNacks = 0;
+      var totalRetries = 0;
       for (var i = 0; i < chunks.length; i++) {
         if (_abortRequested) {
           await _ble.write(makeAbort((i + 1) % 256));
@@ -171,14 +181,17 @@ class TransmissionService extends ChangeNotifier {
         final injectionMs = chunk.pairs.length * (pressMs + releaseMs + 2 * comboMs);
         final ackTimeoutMs = chunkWarmupMs + injectionMs + 500; // buffer for BLE round-trip
 
+        final expectedSeq = chunk.seq;
+        final chunkSw = Stopwatch()..start();
         for (var retry = 0; retry <= _maxRetries; retry++) {
           if (retry > 0) {
             await Future.delayed(const Duration(milliseconds: 100));
           }
           await _ble.write(chunk.toBytes());
-          final resp = await _dequeue(responseQueue, () => responseWaiter, (c) => responseWaiter = c, Duration(milliseconds: ackTimeoutMs));
+          final resp = await _dequeueForSeq(responseQueue, () => responseWaiter, (c) => responseWaiter = c, Duration(milliseconds: ackTimeoutMs), expectedSeq);
 
           if (resp == null) {
+            totalRetries++;
             if (retry == _maxRetries) {
               _lastError = 'ACK timeout (chunk ${i + 1}/${chunks.length})';
               _failedAtKeycode = sentKeycodes;
@@ -188,10 +201,20 @@ class TransmissionService extends ChangeNotifier {
           }
 
           if (resp[0] == respAck) {
+            // Parse extended ACK timing: [ACK, seq, chunk_ms_hi, chunk_ms_lo, max_report_ms, max_sleep_ms]
+            if (resp.length >= 6) {
+              final fwChunkMs = (resp[2] << 8) | resp[3];
+              final fwMaxReport = resp[4];
+              final fwMaxSleep = resp[5];
+              if (i < 5 || i % 50 == 0 || fwChunkMs > 300) {
+                debugPrint('[TB-FW] chunk ${i + 1}: fw_inject=${fwChunkMs}ms max_report=${fwMaxReport}ms max_sleep=${fwMaxSleep}ms');
+              }
+            }
             success = true;
             break;
           } else if (resp[0] == respNack) {
-            // NACK: retry
+            totalNacks++;
+            totalRetries++;
             continue;
           } else if (resp[0] == respError) {
             _lastError = 'ERROR from keyboard (chunk ${i + 1})';
@@ -206,6 +229,13 @@ class TransmissionService extends ChangeNotifier {
           return false;
         }
 
+        chunkSw.stop();
+        final chunkMs = chunkSw.elapsedMilliseconds;
+        final perKeyMs = chunk.pairs.length > 0 ? (chunkMs / chunk.pairs.length).toStringAsFixed(1) : '?';
+        if (i < 5 || i % 50 == 0 || i == chunks.length - 1) {
+          debugPrint('[TB-DIAG] chunk ${i + 1}/${chunks.length}: ${chunkMs}ms total, ${perKeyMs}ms/key, keys=${chunk.pairs.length}');
+        }
+
         sentKeycodes += chunk.pairs.length;
         _progress = TransmissionProgress(
           sentChunks: i + 1,
@@ -215,6 +245,13 @@ class TransmissionService extends ChangeNotifier {
         );
         notifyListeners();
       }
+
+      totalStopwatch.stop();
+      debugPrint('[TB-DIAG] ===== TRANSMISSION COMPLETE =====');
+      debugPrint('[TB-DIAG] total: ${totalStopwatch.elapsedMilliseconds}ms for $sentKeycodes keys');
+      debugPrint('[TB-DIAG] avg: ${sentKeycodes > 0 ? (totalStopwatch.elapsedMilliseconds / sentKeycodes).toStringAsFixed(1) : "?"}ms/key');
+      debugPrint('[TB-DIAG] effective speed: ${sentKeycodes > 0 ? (sentKeycodes * 1000 / totalStopwatch.elapsedMilliseconds).toStringAsFixed(0) : "?"} keys/sec');
+      debugPrint('[TB-DIAG] nacks=$totalNacks, retries=$totalRetries');
 
       // 3. Send DONE
       final doneSeq = (chunks.length + 1) % 256;
@@ -271,6 +308,46 @@ class TransmissionService extends ChangeNotifier {
     // Check one more time after wakeup
     if (queue.isNotEmpty) {
       return queue.removeFirst();
+    }
+    return null;
+  }
+
+  /// Dequeue response matching expected seq, discarding stale/duplicate responses.
+  Future<Uint8List?> _dequeueForSeq(
+    Queue<Uint8List> queue,
+    Completer<void>? Function() getWaiter,
+    void Function(Completer<void>?) setWaiter,
+    Duration timeout,
+    int expectedSeq,
+  ) async {
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (queue.isNotEmpty) {
+        final item = queue.removeFirst();
+        if (item.length >= 2 && item[1] != expectedSeq) {
+          debugPrint('[TB-Q] discard stale resp: type=0x${item[0].toRadixString(16)} seq=${item[1]} (expected=$expectedSeq)');
+          continue; // discard and try next
+        }
+        return item;
+      }
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining.isNegative) break;
+      final waiter = Completer<void>();
+      setWaiter(waiter);
+      try {
+        await waiter.future.timeout(remaining);
+      } on TimeoutException {
+        break;
+      }
+    }
+    // Check one more time after wakeup
+    while (queue.isNotEmpty) {
+      final item = queue.removeFirst();
+      if (item.length >= 2 && item[1] != expectedSeq) {
+        debugPrint('[TB-Q] discard stale resp: type=0x${item[0].toRadixString(16)} seq=${item[1]} (expected=$expectedSeq)');
+        continue;
+      }
+      return item;
     }
     return null;
   }

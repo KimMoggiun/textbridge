@@ -146,6 +146,28 @@ static void tb_send_response(uint8_t resp, uint8_t seq)
     bt_conn_unref(conn);
 }
 
+/* Extended ACK with per-chunk timing diagnostics.
+ * Format: [ACK, seq, chunk_ms_hi, chunk_ms_lo, max_report_ms, max_sleep_ms] */
+static void tb_send_ack_timing(uint8_t seq, uint16_t chunk_ms,
+                                uint8_t max_report_ms, uint8_t max_sleep_ms)
+{
+    struct bt_conn *conn = tb_conn;
+    if (!conn || !tb_notify_enabled) {
+        return;
+    }
+    bt_conn_ref(conn);
+    uint8_t data[6] = {
+        TB_RESP_ACK, seq,
+        (chunk_ms >> 8) & 0xFF, chunk_ms & 0xFF,
+        max_report_ms, max_sleep_ms
+    };
+    int err = bt_gatt_notify(conn, &tb_svc.attrs[4], data, sizeof(data));
+    if (err) {
+        LOG_WRN("TB notify ack_timing failed (err %d)", err);
+    }
+    bt_conn_unref(conn);
+}
+
 static void tb_send_error(uint8_t seq, uint8_t err_code)
 {
     struct bt_conn *conn = tb_conn;
@@ -232,6 +254,10 @@ static void tb_cancel_session_timer(void)
 /* ---------- HID injection work ---------- */
 static void tb_inject_work_handler(struct k_work *work)
 {
+    int64_t chunk_start = k_uptime_get();
+    uint8_t max_report_ms = 0;
+    uint8_t max_sleep_ms = 0;
+
     /* Warmup: send current (empty) report to sync USB host polling.
      * Only needed for the first chunk after START — subsequent chunks
      * follow immediately after injection so USB is already active. */
@@ -249,6 +275,8 @@ static void tb_inject_work_handler(struct k_work *work)
         uint8_t kc = tb_kc_buf[i].keycode;
         uint8_t mod = tb_kc_buf[i].modifier;
         int ret;
+        int64_t t0, t1;
+        uint8_t elapsed;
 
         if (mod) {
             /* Atomic modifier+key: press and release together in one report.
@@ -257,7 +285,13 @@ static void tb_inject_work_handler(struct k_work *work)
             zmk_hid_register_mods(mod);
             tb_active_mods = mod;
             zmk_hid_keyboard_press(kc);
+
+            t0 = k_uptime_get();
             ret = zmk_endpoints_send_report(0x07);
+            t1 = k_uptime_get();
+            elapsed = (uint8_t)MIN(t1 - t0, 255);
+            if (elapsed > max_report_ms) max_report_ms = elapsed;
+
             if (ret) {
                 LOG_ERR("TB inject send failed (err %d), aborting", ret);
                 zmk_hid_keyboard_release(kc);
@@ -269,16 +303,32 @@ static void tb_inject_work_handler(struct k_work *work)
                 tb_send_error(tb_current_seq, TB_ERR_OVERFLOW);
                 return;
             }
+
+            t0 = k_uptime_get();
             k_msleep(tb_combo_delay);
+            t1 = k_uptime_get();
+            elapsed = (uint8_t)MIN(t1 - t0, 255);
+            if (elapsed > max_sleep_ms) max_sleep_ms = elapsed;
 
             zmk_hid_keyboard_release(kc);
             zmk_hid_unregister_mods(mod);
             tb_active_mods = 0;
+
+            t0 = k_uptime_get();
             zmk_endpoints_send_report(0x07);
+            t1 = k_uptime_get();
+            elapsed = (uint8_t)MIN(t1 - t0, 255);
+            if (elapsed > max_report_ms) max_report_ms = elapsed;
         } else {
             /* Simple key without modifier */
             zmk_hid_keyboard_press(kc);
+
+            t0 = k_uptime_get();
             ret = zmk_endpoints_send_report(0x07);
+            t1 = k_uptime_get();
+            elapsed = (uint8_t)MIN(t1 - t0, 255);
+            if (elapsed > max_report_ms) max_report_ms = elapsed;
+
             if (ret) {
                 LOG_ERR("TB inject send failed (err %d), aborting", ret);
                 zmk_hid_keyboard_release(kc);
@@ -288,19 +338,34 @@ static void tb_inject_work_handler(struct k_work *work)
                 tb_send_error(tb_current_seq, TB_ERR_OVERFLOW);
                 return;
             }
+
+            t0 = k_uptime_get();
             k_msleep(tb_press_delay);
+            t1 = k_uptime_get();
+            elapsed = (uint8_t)MIN(t1 - t0, 255);
+            if (elapsed > max_sleep_ms) max_sleep_ms = elapsed;
 
             zmk_hid_keyboard_release(kc);
+
+            t0 = k_uptime_get();
             zmk_endpoints_send_report(0x07);
+            t1 = k_uptime_get();
+            elapsed = (uint8_t)MIN(t1 - t0, 255);
+            if (elapsed > max_report_ms) max_report_ms = elapsed;
         }
 
+        t0 = k_uptime_get();
         k_msleep(tb_release_delay);
+        t1 = k_uptime_get();
+        elapsed = (uint8_t)MIN(t1 - t0, 255);
+        if (elapsed > max_sleep_ms) max_sleep_ms = elapsed;
     }
 
-    /* Send ACK if not aborted */
+    /* Send ACK with timing diagnostics if not aborted */
     if (tb_injecting) {
         tb_injecting = false;
-        tb_send_response(TB_RESP_ACK, tb_current_seq);
+        uint16_t chunk_ms = (uint16_t)MIN(k_uptime_get() - chunk_start, 65535);
+        tb_send_ack_timing(tb_current_seq, chunk_ms, max_report_ms, max_sleep_ms);
         tb_last_seq = tb_current_seq;
     }
 }
