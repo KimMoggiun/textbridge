@@ -73,10 +73,10 @@ void main() {
       expect(info.compressedBytes, lessThan(info.originalBytes ~/ 2));
     });
 
-    test('decoderJava is non-empty and contains H class', () {
-      expect(CompressionService.decoderJava.contains('class H'), true);
+    test('decoderJava is non-empty and contains R class', () {
+      expect(CompressionService.decoderJava.contains('class R'), true);
       expect(CompressionService.decoderJava.contains('Inflater'), true);
-      expect(CompressionService.decoderJava.contains('Files.readAllBytes'), true);
+      expect(CompressionService.decoderJava.contains('KeyListener'), true);
       expect(CompressionService.decoderJava.contains('output.txt'), true);
       final open = CompressionService.decoderJava.split('{').length - 1;
       final close = CompressionService.decoderJava.split('}').length - 1;
@@ -86,7 +86,7 @@ void main() {
     test('decoderJava every character is HID-typeable', () {
       final result = textToKeycodes(CompressionService.decoderJava);
       expect(result.skippedCount, 0,
-          reason: 'Some characters in H.java have no HID mapping');
+          reason: 'Some characters in R.java have no HID mapping');
       expect(result.keycodes.isNotEmpty, true);
     });
 

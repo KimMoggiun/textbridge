@@ -83,8 +83,8 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 ListTile(
                   leading: const Icon(Icons.code),
-                  title: const Text('H.java 디코더 삽입'),
-                  subtitle: const Text('Direct 모드로 PC에 디코더를 전송'),
+                  title: const Text('R.java 리시버 삽입'),
+                  subtitle: const Text('Direct 모드로 PC에 리시버를 전송'),
                   onTap: () => Navigator.pop(context, CompressionService.decoderJava),
                 ),
                 ListTile(
